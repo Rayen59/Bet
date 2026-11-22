@@ -1470,3 +1470,134 @@ export async function ensureDatabaseSeeded(): Promise<void> {
 
   return seedPromise;
 }
+
+const STATELESS_SPORTS = [
+  { id: 1, slug: 'football', name: 'Football', icon: 'trophy' },
+  { id: 2, slug: 'basketball', name: 'Basketball', icon: 'circle-dot' },
+  { id: 3, slug: 'tennis', name: 'Tennis', icon: 'disc' },
+  { id: 4, slug: 'volleyball', name: 'Volleyball', icon: 'globe' },
+  { id: 5, slug: 'esports', name: 'Esports', icon: 'gamepad-2' },
+];
+
+let statelessSnapshotCache: {
+  ts: number;
+  sports: Array<{ id: number; slug: string; name: string; icon: string; liveCount: number; totalCount: number }>;
+  competitions: Array<{ id: number; slug: string; name: string; sportId: number; country: string; featured: boolean }>;
+  matches: any[];
+  liveTotal: number;
+} | null = null;
+
+export async function fetchLiveFixturesSnapshot() {
+  if (statelessSnapshotCache && Date.now() - statelessSnapshotCache.ts < 15_000) {
+    return statelessSnapshotCache;
+  }
+
+  const [espnRes, lsRes] = await Promise.all([fetchEspnFixtures(), fetchLiveScoreFootballFixtures()]);
+  const rawCombined: UnifiedFixture[] = [...espnRes.fixtures, ...lsRes.fixtures];
+  const seenPairs = new Set<string>();
+  const sportBySlug = new Map(STATELESS_SPORTS.map((s) => [s.slug, s]));
+  const compMap = new Map<string, { id: number; slug: string; name: string; sportId: number; country: string; featured: boolean }>();
+
+  const hydratedMatches: any[] = [];
+  let nextMatchId = 1;
+  let nextMarketId = 1;
+  let nextCompId = 1;
+  let nextTeamId = 1;
+
+  for (const fx of rawCombined) {
+    const sp = sportBySlug.get(fx.sportSlug);
+    if (!sp) continue;
+    const day = toYmd(fx.startTime);
+    const pairKey = `${sp.id}:${normalizeTeamKey(fx.homeName)}:${normalizeTeamKey(fx.awayName)}:${day}`;
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+    if (fx.status === 'finished' && Date.now() - fx.startTime.getTime() > 14 * 3600_000) continue;
+
+    let comp = compMap.get(fx.competitionSlug);
+    if (!comp) {
+      comp = {
+        id: nextCompId++,
+        slug: fx.competitionSlug,
+        name: fx.competitionName,
+        sportId: sp.id,
+        country: fx.country,
+        featured: fx.featuredComp,
+      };
+      compMap.set(fx.competitionSlug, comp);
+    }
+
+    const matchId = nextMatchId++;
+    const rawMarkets = buildSimulatedMarketsForSport(
+      matchId,
+      fx.sportSlug,
+      fx.homeName,
+      fx.awayName,
+      matchId,
+      fx.oddsHint
+    );
+    const marketsWithIds = rawMarkets.map((m) => ({
+      id: nextMarketId++,
+      ...m,
+    }));
+
+    hydratedMatches.push({
+      id: matchId,
+      externalId: fx.externalId,
+      sportId: sp.id,
+      sportSlug: sp.slug,
+      sportName: sp.name,
+      competitionId: comp.id,
+      competitionSlug: comp.slug,
+      competitionName: comp.name,
+      competitionCountry: comp.country,
+      homeTeam: {
+        id: nextTeamId++,
+        name: fx.homeName,
+        shortName: fx.homeShort,
+        logo: fx.homeLogo || pickColor(fx.homeName),
+      },
+      awayTeam: {
+        id: nextTeamId++,
+        name: fx.awayName,
+        shortName: fx.awayShort,
+        logo: fx.awayLogo || pickColor(fx.awayName),
+      },
+      homeScore: fx.homeScore,
+      awayScore: fx.awayScore,
+      status: fx.status,
+      matchTimer: fx.matchTimer,
+      startTime: fx.startTime,
+      dataSource: 'live_api',
+      featured: fx.featured,
+      markets: marketsWithIds,
+    });
+  }
+
+  const orderWeight: Record<string, number> = { live: 0, upcoming: 1, finished: 2 };
+  hydratedMatches.sort((a, b) => {
+    const wDiff = (orderWeight[a.status] ?? 3) - (orderWeight[b.status] ?? 3);
+    if (wDiff !== 0) return wDiff;
+    if (a.featured !== b.featured) return a.featured ? -1 : 1;
+    return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+  });
+
+  const sportsWithCounts = STATELESS_SPORTS.map((sp) => {
+    const forSport = hydratedMatches.filter((m) => m.sportId === sp.id);
+    return {
+      ...sp,
+      liveCount: forSport.filter((m) => m.status === 'live').length,
+      totalCount: forSport.length,
+    };
+  });
+
+  statelessSnapshotCache = {
+    ts: Date.now(),
+    sports: sportsWithCounts,
+    competitions: Array.from(compMap.values()),
+    matches: hydratedMatches,
+    liveTotal: hydratedMatches.filter((m) => m.status === 'live').length,
+  };
+
+  return statelessSnapshotCache;
+}
+

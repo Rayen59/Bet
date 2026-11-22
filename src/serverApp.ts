@@ -36,6 +36,7 @@ import {
   buildSimulatedMarketsForSport,
   ensureCoreSeeded,
   ensureDatabaseSeeded,
+  fetchLiveFixturesSnapshot,
   syncIfStale,
   syncLiveSportsFeeds,
 } from './services/sportsSync.ts';
@@ -138,9 +139,21 @@ app.get('/api/stream', (req, res) => {
   req.on('close', cleanup);
 });
 
-// Ensure core DB tables, sports, and admin account exist before any API route executes
+const isStatelessVercelMode = () => process.env.VERCEL === '1' && !hasDatabaseConfig;
+
+// Ensure core DB tables, sports, and admin account exist before DB-backed API routes execute
 app.use('/api', async (req, res, next) => {
-  if (req.path === '/health' || req.path === '/stream') return next();
+  if (
+    req.path === '/health' ||
+    req.path === '/stream' ||
+    (isStatelessVercelMode() &&
+      (req.path === '/sports' ||
+        req.path.startsWith('/matches') ||
+        req.path === '/leaderboard' ||
+        req.path === '/promotions'))
+  ) {
+    return next();
+  }
   try {
     await ensureCoreSeeded();
     next();
@@ -375,6 +388,11 @@ app.patch('/api/user/favorites', requireAuth, async (req: AuthRequest, res) => {
 
 app.get('/api/sports', async (_req, res) => {
   try {
+    if (isStatelessVercelMode()) {
+      const snap = await fetchLiveFixturesSnapshot();
+      return res.json({ sports: snap.sports, competitions: snap.competitions });
+    }
+
     const [sportList, compList, matchCounts] = await Promise.all([
       db.select().from(sports),
       db.select().from(competitions),
@@ -407,6 +425,35 @@ app.get('/api/sports', async (_req, res) => {
 
 app.get('/api/matches', async (req, res) => {
   try {
+    const sportSlug = String(req.query.sport || '').trim().toLowerCase();
+    const competitionSlug = String(req.query.competition || '').trim().toLowerCase();
+    const statusFilter = String(req.query.status || '').trim().toLowerCase();
+    const search = String(req.query.search || '').trim().toLowerCase();
+
+    if (isStatelessVercelMode()) {
+      const snap = await fetchLiveFixturesSnapshot();
+      let hydrated = [...snap.matches];
+      if (sportSlug && sportSlug !== 'all') {
+        hydrated = hydrated.filter((m) => m.sportSlug === sportSlug);
+      }
+      if (competitionSlug && competitionSlug !== 'all') {
+        hydrated = hydrated.filter((m) => m.competitionSlug === competitionSlug);
+      }
+      if (statusFilter && statusFilter !== 'all') {
+        hydrated = hydrated.filter((m) => m.status === statusFilter);
+      }
+      if (search) {
+        hydrated = hydrated.filter(
+          (m) =>
+            m.homeTeam.name.toLowerCase().includes(search) ||
+            m.awayTeam.name.toLowerCase().includes(search) ||
+            m.competitionName.toLowerCase().includes(search) ||
+            m.sportName.toLowerCase().includes(search)
+        );
+      }
+      return res.json({ matches: hydrated, liveTotal: snap.liveTotal });
+    }
+
     await ensureDatabaseSeeded();
     if (process.env.VERCEL === '1') {
       try {
@@ -417,11 +464,6 @@ app.get('/api/matches', async (req, res) => {
     } else {
       void syncIfStale();
     }
-
-    const sportSlug = String(req.query.sport || '').trim().toLowerCase();
-    const competitionSlug = String(req.query.competition || '').trim().toLowerCase();
-    const statusFilter = String(req.query.status || '').trim().toLowerCase();
-    const search = String(req.query.search || '').trim().toLowerCase();
 
     const [sportRows, compRows, teamRows, matchRows, marketRows] = await Promise.all([
       db.select().from(sports),
@@ -511,6 +553,18 @@ app.get('/api/matches', async (req, res) => {
 
 app.get('/api/matches/:id', async (req, res) => {
   try {
+    const matchId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(matchId)) {
+      return res.status(400).json({ error: 'Invalid match ID.' });
+    }
+
+    if (isStatelessVercelMode()) {
+      const snap = await fetchLiveFixturesSnapshot();
+      const match = snap.matches.find((m) => m.id === matchId);
+      if (!match) return res.status(404).json({ error: 'Match not found.' });
+      return res.json({ match });
+    }
+
     await ensureDatabaseSeeded();
     if (process.env.VERCEL === '1') {
       try {
@@ -520,10 +574,6 @@ app.get('/api/matches/:id', async (req, res) => {
       }
     } else {
       void syncIfStale();
-    }
-    const matchId = Number.parseInt(req.params.id, 10);
-    if (!Number.isInteger(matchId)) {
-      return res.status(400).json({ error: 'Invalid match ID.' });
     }
 
     const [match] = await db.select().from(matches).where(eq(matches.id, matchId)).limit(1);
@@ -559,6 +609,10 @@ app.get('/api/matches/:id', async (req, res) => {
 
 app.post('/api/matches/sync-live', async (_req, res) => {
   try {
+    if (isStatelessVercelMode()) {
+      const snap = await fetchLiveFixturesSnapshot();
+      return res.json({ ok: true, synced: snap.matches.length, updated: 0, sources: ['ESPN', 'LiveScore'] });
+    }
     await ensureDatabaseSeeded();
     const summary = await syncLiveSportsFeeds();
     res.json({ ok: true, ...summary });
@@ -573,6 +627,19 @@ app.get('/api/matches/:id/matchcenter', async (req, res) => {
     const matchId = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(matchId)) {
       return res.status(400).json({ error: 'Invalid match ID.' });
+    }
+
+    if (isStatelessVercelMode()) {
+      const snap = await fetchLiveFixturesSnapshot();
+      const m = snap.matches.find((item) => item.id === matchId);
+      if (!m) return res.status(404).json({ error: 'Match not found.' });
+      const matchCenter = await fetchRealMatchCenter({
+        externalId: m.externalId,
+        competitionSlug: m.competitionSlug || '',
+        homeTeamName: m.homeTeam?.name || '',
+        awayTeamName: m.awayTeam?.name || '',
+      });
+      return res.json({ matchCenter });
     }
 
     const [match] = await db.select().from(matches).where(eq(matches.id, matchId)).limit(1);
@@ -735,6 +802,9 @@ app.post('/api/deposits', requireAuth, async (req: AuthRequest, res) => {
 
 app.get('/api/leaderboard', async (_req, res) => {
   try {
+    if (isStatelessVercelMode()) {
+      return res.json({ leaderboard: [] });
+    }
     const topUsers = await db
       .select({
         id: users.id,
@@ -777,6 +847,11 @@ app.get('/api/leaderboard', async (_req, res) => {
 
 app.get('/api/promotions', async (req, res) => {
   try {
+    if (isStatelessVercelMode()) {
+      return res.json({
+        promotions: VIRTUAL_PROMO_OFFERS.map((offer) => ({ ...offer, claimed: false })),
+      });
+    }
     const authUser = await resolveAuthUser(req);
     let claimedCodes: Array<{ promoCode: string; claimedAt: Date }> = [];
     if (authUser) {

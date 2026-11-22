@@ -12,6 +12,8 @@ function findConnectionString(): { url?: string; source: string } {
     'POSTGRES_PRISMA_URL',
     'DATABASE_URL',
     'POSTGRES_URL_NON_POOLING',
+    'POSTGRES_URL_NO_SSL',
+    'DATABASE_URL_UNPOOLED',
     'NEON_DATABASE_URL',
     'SUPABASE_DB_URL',
   ];
@@ -23,7 +25,11 @@ function findConnectionString(): { url?: string; source: string } {
 
   for (const [key, raw] of Object.entries(process.env)) {
     if (!raw?.trim()) continue;
-    if (/_(POSTGRES_URL|POSTGRES_PRISMA_URL|DATABASE_URL)$/i.test(key)) {
+    if (
+      /_(POSTGRES_URL|POSTGRES_PRISMA_URL|DATABASE_URL|DATABASE_URL_UNPOOLED|POSTGRES_URL_NON_POOLING|POSTGRES_URL_NO_SSL)$/i.test(
+        key
+      )
+    ) {
       return { url: raw.trim(), source: key };
     }
   }
