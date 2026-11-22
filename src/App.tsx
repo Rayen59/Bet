@@ -10,6 +10,7 @@ import {
   History,
   Home,
   LayoutDashboard,
+  Layers,
   Lock,
   LogOut,
   Menu,
@@ -47,7 +48,7 @@ function SportIcon({ slug }: { slug: string }) {
 
 export default function App() {
   const { user, stats, logout, refreshProfile } = useAuth();
-  const { selections, combinedOdds, mobileOpen, setMobileOpen } = useSlip();
+  const { selections, matchGroups, combinedOdds, mobileOpen, setMobileOpen } = useSlip();
   const { showToast } = useToast();
 
   const [route, setRoute] = useState<AppRoute>('home');
@@ -63,26 +64,28 @@ export default function App() {
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const loadCatalogAndMatches = useCallback(async (silent = false) => {
-    try {
-      const [sportsRes, matchesRes] = await Promise.all([
-        apiFetch<{ sports: SportItem[]; competitions: CompetitionItem[] }>('/api/sports'),
-        apiFetch<{ matches: MatchItem[]; liveTotal: number }>('/api/matches'),
-      ]);
-      setSports(sportsRes.sports);
-      setCompetitions(sportsRes.competitions);
-      setMatches(matchesRes.matches);
-      setLiveTotal(matchesRes.liveTotal);
-    } catch (err: any) {
-      if (!silent) {
-        showToast(err?.message || 'Unable to load sports catalog.', 'error');
+  const loadCatalogAndMatches = useCallback(
+    async (silent = false) => {
+      try {
+        const [sportsRes, matchesRes] = await Promise.all([
+          apiFetch<{ sports: SportItem[]; competitions: CompetitionItem[] }>('/api/sports'),
+          apiFetch<{ matches: MatchItem[]; liveTotal: number }>('/api/matches'),
+        ]);
+        setSports(sportsRes.sports);
+        setCompetitions(sportsRes.competitions);
+        setMatches(matchesRes.matches);
+        setLiveTotal(matchesRes.liveTotal);
+      } catch (err: any) {
+        if (!silent) {
+          showToast(err?.message || 'Unable to load sports catalog.', 'error');
+        }
+      } finally {
+        setLoadingMatches(false);
       }
-    } finally {
-      setLoadingMatches(false);
-    }
-  }, [showToast]);
+    },
+    [showToast]
+  );
 
-  // Initial fetch + SSE real-time push + automatic silent live polling every 10s + tab visibility refresh
   useEffect(() => {
     loadCatalogAndMatches();
 
@@ -134,11 +137,13 @@ export default function App() {
     esports: 'sport-esports',
   };
 
+  const betBuilderGroupCount = matchGroups.filter((g) => g.isBetBuilder).length;
+
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f0f11] text-zinc-100 pb-20 lg:pb-0">
-      {/* Header matching MyBet216 5f64d28e screenshot */}
+    <div className="min-h-screen flex flex-col bg-[#111111] text-zinc-100 pb-20 lg:pb-0">
+      {/* Header matching 5f64d28e screenshot */}
       <header className="sticky top-0 z-40 border-b border-zinc-800/90 bg-[#121214]/95 backdrop-blur-md">
-        <div className="max-w-[1480px] mx-auto px-3 sm:px-5 h-15 flex items-center justify-between gap-3 sm:gap-5">
+        <div className="max-w-[1640px] mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-5">
           {/* Left: White Square Menu Button + Brand Logo + Nav */}
           <div className="flex items-center gap-3 sm:gap-5 min-w-0">
             <button
@@ -147,7 +152,7 @@ export default function App() {
                 setDrawerTab('main');
                 setAccountDrawerOpen(true);
               }}
-              className="w-9 h-9 rounded-lg bg-white hover:bg-zinc-200 text-[#111111] flex items-center justify-center shrink-0 transition-colors"
+              className="w-10 h-10 rounded-lg bg-white hover:bg-zinc-200 text-[#111111] flex items-center justify-center shrink-0 transition-colors"
               aria-label="Open navigation & account menu"
             >
               <Menu className="w-5 h-5" />
@@ -161,7 +166,7 @@ export default function App() {
               <BrandLogo />
             </button>
 
-            <nav className="hidden lg:flex items-center gap-5 text-xs font-heading font-bold uppercase tracking-wide text-zinc-400">
+            <nav className="hidden lg:flex items-center gap-5 text-xs font-heading font-bold uppercase tracking-wide text-zinc-300">
               <button
                 type="button"
                 onClick={() => navigate('home')}
@@ -179,7 +184,7 @@ export default function App() {
                 }`}
               >
                 <span>Live Betting</span>
-                <span className="rounded-xs bg-[#dc2626] px-1.5 py-0.5 font-mono-tabular text-[10px] font-bold text-white">
+                <span className="rounded bg-[#e11d2e] px-1.5 py-0.5 font-mono-tabular text-[10px] font-extrabold text-white">
                   {liveTotal}
                 </span>
               </button>
@@ -222,7 +227,7 @@ export default function App() {
                     route === 'admin' ? 'text-[#f5b800] underline underline-offset-4' : 'text-[#f5b800]'
                   }`}
                 >
-                  Admin Console
+                  Admin
                 </button>
               )}
             </nav>
@@ -230,22 +235,18 @@ export default function App() {
 
           {/* Search Bar (desktop) */}
           <div className="hidden md:flex flex-1 max-w-xs relative">
-            <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5 pointer-events-none" />
+            <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5 pointer-events-none" />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
-                if (
-                  route !== 'home' &&
-                  route !== 'live' &&
-                  !route.startsWith('sport-')
-                ) {
+                if (route !== 'home' && route !== 'live' && !route.startsWith('sport-')) {
                   setRoute('live');
                 }
               }}
               placeholder="Search teams, leagues..."
-              className="w-full rounded-md border border-zinc-800 bg-[#1a1a1d] pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
+              className="w-full rounded-lg border border-zinc-800 bg-[#1c1c1f] pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-400 focus:border-[#f5b800] focus:outline-none"
             />
           </div>
 
@@ -259,10 +260,10 @@ export default function App() {
                     setDrawerTab('user');
                     setAccountDrawerOpen(true);
                   }}
-                  className="flex items-center gap-2 rounded-md border border-[#f5b800]/75 bg-[#161510] hover:border-[#f5b800] px-2.5 py-1.5 text-xs whitespace-nowrap shrink-0 transition-colors"
+                  className="flex items-center gap-2 rounded-lg border border-[#f5b800] bg-[#16140e] hover:bg-[#1f1c11] px-3 py-1.5 text-xs whitespace-nowrap shrink-0 transition-colors"
                 >
                   <span className="w-5 h-5 rounded-full bg-[#f5b800] text-[#111111] flex items-center justify-center shrink-0">
-                    <UserIcon className="w-3 h-3" />
+                    <UserIcon className="w-3.5 h-3.5" />
                   </span>
                   <span className="font-mono-tabular font-bold text-[#f5b800]">
                     {user.virtualBalance.toFixed(2)} DT
@@ -274,7 +275,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => navigate('admin')}
-                    className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-1.5 text-xs whitespace-nowrap shrink-0"
+                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-2 text-xs whitespace-nowrap shrink-0"
                   >
                     <Shield className="w-3.5 h-3.5" />
                     <span>Admin</span>
@@ -286,14 +287,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => navigate('login')}
-                  className="px-3 py-1.5 rounded-md border border-zinc-700 text-xs font-semibold text-zinc-200 hover:text-white transition-colors whitespace-nowrap shrink-0"
+                  className="px-3.5 py-2 rounded-lg border border-zinc-700 text-xs font-semibold text-zinc-200 hover:text-white transition-colors whitespace-nowrap shrink-0"
                 >
                   Sign In
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate('register')}
-                  className="px-3.5 py-1.5 rounded-md bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold text-xs transition-colors whitespace-nowrap shrink-0"
+                  className="px-4 py-2 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold text-xs transition-colors whitespace-nowrap shrink-0"
                 >
                   Register
                 </button>
@@ -303,17 +304,16 @@ export default function App() {
         </div>
       </header>
 
-      {/* Full Gold Account / Main Menu Modal Overlay matching screenshots 27c1ef7e & 46f7db2f */}
+      {/* Account / Main Menu Modal Drawer */}
       {accountDrawerOpen && (
         <div
-          className="fixed inset-0 z-50 bg-[#0f0f11] flex flex-col overflow-y-auto"
+          className="fixed inset-0 z-50 bg-black/80 flex justify-start"
           onClick={() => setAccountDrawerOpen(false)}
         >
           <div
-            className="max-w-md w-full mx-auto flex-1 flex flex-col bg-[#0f0f11]"
+            className="max-w-sm w-full h-full flex flex-col bg-[#111111] border-r border-zinc-800 overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Top Bar */}
             <div className="h-14 px-4 flex items-center justify-between border-b border-zinc-800/80">
               <div className="w-6" />
               <BrandLogo />
@@ -328,7 +328,6 @@ export default function App() {
             </div>
 
             <div className="p-4 space-y-4 flex-1">
-              {/* Gold User Card */}
               {user ? (
                 <div className="rounded-xl bg-gradient-to-b from-[#e0a119] to-[#c98b10] text-[#111111] p-4 space-y-3 shadow-lg">
                   <div className="flex items-center gap-3">
@@ -378,7 +377,7 @@ export default function App() {
                   </div>
                 </div>
               ) : (
-                <div className="rounded-xl bg-[#1a1a1d] border border-zinc-800 p-4 flex items-center justify-between gap-3">
+                <div className="rounded-xl bg-[#1c1c1f] border border-zinc-800 p-4 flex items-center justify-between gap-3">
                   <div>
                     <p className="font-heading text-sm font-bold text-white">Welcome to SPORTZONE</p>
                     <p className="text-xs text-zinc-400">Sign in to place virtual DT bets</p>
@@ -393,7 +392,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* Main Menu | User Menu Underline Tabs matching 27c1ef7e & 46f7db2f */}
               <div className="grid grid-cols-2 border-b border-zinc-800 text-xs font-heading font-bold">
                 <button
                   type="button"
@@ -435,10 +433,10 @@ export default function App() {
                     className="w-full flex items-center justify-between py-3.5 px-2 text-white hover:bg-zinc-900"
                   >
                     <span className="flex items-center gap-3">
-                      <Zap className="w-4 h-4 text-[#dc2626]" />
+                      <Zap className="w-4 h-4 text-[#e11d2e]" />
                       <span>Live Betting</span>
                     </span>
-                    <span className="rounded bg-[#dc2626] px-1.5 py-0.5 text-[11px] font-mono-tabular font-bold">
+                    <span className="rounded bg-[#e11d2e] px-1.5 py-0.5 text-[11px] font-mono-tabular font-bold">
                       {liveTotal}
                     </span>
                   </button>
@@ -453,7 +451,7 @@ export default function App() {
                         <SportIcon slug={sp.slug} />
                         <span>{sp.name}</span>
                       </span>
-                      <span className="font-mono-tabular text-xs text-zinc-500">
+                      <span className="font-mono-tabular text-xs text-zinc-400">
                         {sp.totalCount ?? 0}
                       </span>
                     </button>
@@ -508,7 +506,7 @@ export default function App() {
                       className="w-full flex items-center gap-3 py-3.5 px-2 text-[#f5b800] font-bold hover:bg-zinc-900"
                     >
                       <Shield className="w-4 h-4" />
-                      <span>Admin Console (Users & Credit)</span>
+                      <span>Admin Console</span>
                     </button>
                   )}
                   {user && (
@@ -533,29 +531,29 @@ export default function App() {
         </div>
       )}
 
-      {/* Main 3-Column Workspace */}
-      <div className="flex-1 max-w-[1480px] w-full mx-auto px-3 sm:px-5 py-4 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_340px] gap-4 items-start">
-        {/* Left Sidebar: Sports Categories & Main Menu */}
-        <aside className="hidden lg:flex flex-col gap-3 sticky top-18">
-          <div className="rounded-md border border-zinc-800/80 bg-[#17171a] overflow-hidden">
-            <div className="px-3.5 py-2.5 border-b border-zinc-800 bg-[#131315] text-xs font-bold text-[#f5b800] uppercase tracking-wider">
+      {/* Responsive Workspace: 1 col mobile -> 2 col lg (wide!) -> 3 col xl */}
+      <div className="flex-1 max-w-[1640px] w-full mx-auto px-3 sm:px-5 lg:px-6 py-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[230px_minmax(0,1fr)_370px] gap-5 items-start">
+        {/* Left Sidebar (xl+) */}
+        <aside className="hidden xl:flex flex-col gap-3 sticky top-20">
+          <div className="rounded-xl border border-zinc-800/80 bg-[#1a1a1d] overflow-hidden">
+            <div className="px-3.5 py-2.5 border-b border-zinc-800 bg-[#141416] text-xs font-bold text-[#f5b800] uppercase tracking-wider">
               Sports A-Z
             </div>
             <div className="p-1.5 space-y-0.5">
               <button
                 type="button"
                 onClick={() => navigate('live')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded text-xs font-medium transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                   route === 'live'
                     ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-white'
+                    : 'text-zinc-200 hover:bg-zinc-800/60 hover:text-white'
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-[#dc2626] shrink-0" />
+                  <Radio className="w-4 h-4 text-[#e11d2e] shrink-0" />
                   <span>Live & All Sports</span>
                 </span>
-                <span className="font-mono-tabular text-[#dc2626] font-bold">{liveTotal}</span>
+                <span className="font-mono-tabular text-[#e11d2e] font-bold">{liveTotal}</span>
               </button>
 
               {sports.map((sp) => {
@@ -566,35 +564,35 @@ export default function App() {
                     key={sp.id}
                     type="button"
                     onClick={() => navigate(target)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded text-xs font-medium transition-colors ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                       active
                         ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                        : 'text-zinc-300 hover:bg-zinc-800/60 hover:text-white'
+                        : 'text-zinc-200 hover:bg-zinc-800/60 hover:text-white'
                     }`}
                   >
                     <span className="flex items-center gap-2 truncate">
                       <SportIcon slug={sp.slug} />
                       <span className="truncate">{sp.name}</span>
                     </span>
-                    <span className="font-mono-tabular text-zinc-500">{sp.totalCount ?? 0}</span>
+                    <span className="font-mono-tabular text-zinc-400">{sp.totalCount ?? 0}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="rounded-md border border-zinc-800/80 bg-[#17171a] overflow-hidden">
-            <div className="px-3.5 py-2.5 border-b border-zinc-800 bg-[#131315] text-xs font-bold text-zinc-300 uppercase tracking-wider">
+          <div className="rounded-xl border border-zinc-800/80 bg-[#1a1a1d] overflow-hidden">
+            <div className="px-3.5 py-2.5 border-b border-zinc-800 bg-[#141416] text-xs font-bold text-zinc-300 uppercase tracking-wider">
               Menu
             </div>
             <div className="p-1.5 space-y-0.5 text-xs font-medium">
               <button
                 type="button"
                 onClick={() => navigate('dashboard')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                   route === 'dashboard'
                     ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-300 hover:bg-zinc-800/60'
+                    : 'text-zinc-200 hover:bg-zinc-800/60'
                 }`}
               >
                 <LayoutDashboard className="w-4 h-4 text-zinc-400" />
@@ -603,10 +601,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => navigate('history')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                   route === 'history'
                     ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-300 hover:bg-zinc-800/60'
+                    : 'text-zinc-200 hover:bg-zinc-800/60'
                 }`}
               >
                 <History className="w-4 h-4 text-zinc-400" />
@@ -615,10 +613,10 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => navigate('leaderboard')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                   route === 'leaderboard'
                     ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-300 hover:bg-zinc-800/60'
+                    : 'text-zinc-200 hover:bg-zinc-800/60'
                 }`}
               >
                 <Award className="w-4 h-4 text-zinc-400" />
@@ -627,20 +625,20 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => navigate('promotions')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                   route === 'promotions'
                     ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-300 hover:bg-zinc-800/60'
+                    : 'text-zinc-200 hover:bg-zinc-800/60'
                 }`}
               >
-                <Gift className="w-4 h-4 text-zinc-400" />
+                <Gift className="w-4 h-4 text-[#f5b800]" />
                 <span>Sports Bonus</span>
               </button>
               {user?.role === 'admin' && (
                 <button
                   type="button"
                   onClick={() => navigate('admin')}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                     route === 'admin'
                       ? 'bg-[#f5b800] text-[#111111] font-bold'
                       : 'text-[#f5b800] hover:bg-zinc-800/60'
@@ -654,7 +652,7 @@ export default function App() {
           </div>
         </aside>
 
-        {/* Center Main Viewport */}
+        {/* Center Main Content */}
         <main className="min-w-0">
           {(route === 'home' ||
             route === 'live' ||
@@ -677,7 +675,7 @@ export default function App() {
           )}
 
           {route === 'match-detail' && selectedMatchId !== null && (
-            <MatchDetailView matchId={selectedMatchId} onBack={() => navigate('live')} />
+            <MatchDetailView matchId={selectedMatchId} onBack={() => navigate('home')} />
           )}
 
           {(route === 'login' || route === 'register' || route === 'reset-password') && (
@@ -706,8 +704,8 @@ export default function App() {
           )}
         </main>
 
-        {/* Right Sidebar: Gold Betslip (Desktop) */}
-        <aside className="hidden lg:block sticky top-18 h-[calc(100vh-5.5rem)]">
+        {/* Right Gold Betslip (lg+) */}
+        <aside className="hidden lg:block sticky top-20 h-[calc(100vh-5.8rem)]">
           <BettingSlip onNavigate={navigate} onBetPlaced={() => loadCatalogAndMatches()} />
         </aside>
       </div>
@@ -719,8 +717,15 @@ export default function App() {
           onClick={() => setMobileOpen(true)}
           className="lg:hidden fixed bottom-18 right-4 z-40 flex items-center gap-2 rounded-full bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2.5 shadow-xl text-xs"
         >
-          <Receipt className="w-4 h-4" />
-          <span>Betslip ({selections.length})</span>
+          {betBuilderGroupCount > 0 ? (
+            <Layers className="w-4 h-4" />
+          ) : (
+            <Receipt className="w-4 h-4" />
+          )}
+          <span>
+            Betslip ({selections.length}
+            {betBuilderGroupCount > 0 ? ' · BB' : ''})
+          </span>
           {combinedOdds > 0 && (
             <span className="font-mono-tabular font-extrabold">· {combinedOdds.toFixed(2)}</span>
           )}
@@ -754,7 +759,7 @@ export default function App() {
           type="button"
           onClick={() => navigate('live')}
           className={`flex flex-col items-center justify-center gap-0.5 ${
-            route === 'live' ? 'text-[#dc2626]' : 'text-zinc-400'
+            route === 'live' ? 'text-[#e11d2e]' : 'text-zinc-400'
           }`}
         >
           <Radio className="w-4 h-4" />

@@ -12,6 +12,7 @@ import {
   virtualBets,
 } from '../db/schema.ts';
 import { realtimeHub } from './realtimeHub.ts';
+import { computeGroupOdds, sanitizeMatchSelections } from '../lib/betBuilder.ts';
 
 export interface PlaceBetInput {
   userId: number;
@@ -79,14 +80,8 @@ export async function placeVirtualBet(input: PlaceBetInput) {
   const uniqueMarketIds = Array.from(new Set(input.marketIds.map(Number))).filter(
     (id) => Number.isInteger(id) && id > 0
   );
-  if (uniqueMarketIds.length === 0 || uniqueMarketIds.length > 15) {
-    throw new Error('Select between 1 and 15 valid markets.');
-  }
-
-  if (mode === 'system') {
-    if (uniqueMarketIds.length < 3 || uniqueMarketIds.length > 10) {
-      throw new Error('System bets require between 3 and 10 selections.');
-    }
+  if (uniqueMarketIds.length === 0 || uniqueMarketIds.length > 20) {
+    throw new Error('Select between 1 and 20 valid markets.');
   }
 
   const idempKey = input.idempotencyKey?.trim() || null;
@@ -121,9 +116,6 @@ export async function placeVirtualBet(input: PlaceBetInput) {
     }
 
     const matchIds = Array.from(new Set(dbMarkets.map((m) => m.matchId)));
-    if (matchIds.length !== dbMarkets.length) {
-      throw new Error('Only one selection per match is allowed on a single betting slip.');
-    }
 
     const dbMatches = await tx
       .select()
@@ -148,24 +140,57 @@ export async function placeVirtualBet(input: PlaceBetInput) {
       }
     }
 
-    // Build ticket groups according to mode:
-    // - single: each selection is its own 1-leg bet
-    // - multiple: 1 accumulator bet of all selections (with combo boost)
-    // - system: C(n, k) combination bets of size k
-    let ticketMarketGroups: Array<typeof dbMarkets> = [];
+    // Group markets by matchId and enforce Bet Builder logical validity per match
+    const marketsByMatch = new Map<number, typeof dbMarkets>();
+    for (const mkt of dbMarkets) {
+      const list = marketsByMatch.get(mkt.matchId) || [];
+      list.push(mkt);
+      marketsByMatch.set(mkt.matchId, list);
+    }
+
+    const matchGroups: Array<{ matchId: number; markets: typeof dbMarkets; groupOdds: number }> = [];
+    for (const [mId, mList] of marketsByMatch.entries()) {
+      const match = matchById.get(mId)!;
+      const homeName = teamById.get(match.homeTeamId)?.name;
+      const awayName = teamById.get(match.awayTeamId)?.name;
+      const check = sanitizeMatchSelections(mList, { homeName, awayName });
+      if (check.removed.length > 0) {
+        const first = check.removed[0];
+        throw new Error(
+          `Illogical Bet Builder selection "${first.item.selectionName}": ${first.reason}`
+        );
+      }
+      matchGroups.push({
+        matchId: mId,
+        markets: check.kept,
+        groupOdds: computeGroupOdds(check.kept),
+      });
+    }
+
+    if (mode === 'system') {
+      if (matchGroups.length < 3 || matchGroups.length > 10) {
+        throw new Error('System bets require between 3 and 10 distinct matches.');
+      }
+    }
+
+    // Build ticket groups by matchGroups according to mode:
+    // - single: each match group (single pick or same-match Bet Builder) is its own ticket
+    // - multiple: 1 accumulator ticket combining all match groups (with combo boost)
+    // - system: C(n, k) combinations of match groups
+    let ticketMatchGroups: Array<typeof matchGroups> = [];
     let systemLabel: string | undefined;
 
     if (mode === 'single') {
-      ticketMarketGroups = dbMarkets.map((m) => [m]);
+      ticketMatchGroups = matchGroups.map((g) => [g]);
     } else if (mode === 'system') {
-      const k = Math.max(2, Math.min(dbMarkets.length - 1, Number(input.systemSize) || 2));
-      ticketMarketGroups = getCombinations(dbMarkets, k);
-      systemLabel = `${k}/${dbMarkets.length}`;
+      const k = Math.max(2, Math.min(matchGroups.length - 1, Number(input.systemSize) || 2));
+      ticketMatchGroups = getCombinations(matchGroups, k);
+      systemLabel = `${k}/${matchGroups.length}`;
     } else {
-      ticketMarketGroups = [dbMarkets];
+      ticketMatchGroups = [matchGroups];
     }
 
-    const totalStake = round2(stakePerUnit * ticketMarketGroups.length);
+    const totalStake = round2(stakePerUnit * ticketMatchGroups.length);
 
     const updatedUsers = await tx
       .update(users)
@@ -185,21 +210,35 @@ export async function placeVirtualBet(input: PlaceBetInput) {
     const createdBets: Array<typeof virtualBets.$inferSelect> = [];
     let totalPotentialWinnings = 0;
 
-    for (let idx = 0; idx < ticketMarketGroups.length; idx++) {
-      const group = ticketMarketGroups[idx];
-      const combinedOdds = round2(group.reduce((acc, m) => acc * Number(m.simulatedOdds), 1));
-      const qualifyingLegs = group.filter((m) => m.simulatedOdds >= 1.2).length;
+    for (let idx = 0; idx < ticketMatchGroups.length; idx++) {
+      const ticketGroups = ticketMatchGroups[idx];
+      const flatMarkets = ticketGroups.flatMap((g) => g.markets);
+      const combinedOdds = round2(ticketGroups.reduce((acc, g) => acc * g.groupOdds, 1));
+      const qualifyingEvents = ticketGroups.filter((g) => g.groupOdds >= 1.2).length;
       const boostPct =
-        mode === 'multiple' ? (qualifyingLegs >= 4 ? 0.1 : qualifyingLegs >= 3 ? 0.05 : 0) : 0;
+        mode === 'multiple' && ticketGroups.length >= 3
+          ? qualifyingEvents >= 4
+            ? 0.1
+            : qualifyingEvents >= 3
+            ? 0.05
+            : 0
+          : 0;
       const baseWin = round2(stakePerUnit * combinedOdds);
       const extraWin = round2(baseWin * boostPct);
       const potentialWinnings = round2(baseWin + extraWin);
       totalPotentialWinnings = round2(totalPotentialWinnings + potentialWinnings);
 
-      const prefix = mode === 'single' ? 'SZ-SGL' : mode === 'system' ? 'SZ-SYS' : 'SZ-CMB';
+      const hasBetBuilder = ticketGroups.some((g) => g.markets.length > 1);
+      const prefix = hasBetBuilder && ticketGroups.length === 1
+        ? 'SZ-BB'
+        : mode === 'single'
+        ? 'SZ-SGL'
+        : mode === 'system'
+        ? 'SZ-SYS'
+        : 'SZ-CMB';
       const refCode = `${prefix}-${crypto.randomBytes(2).toString('hex').toUpperCase()}-${Date.now()
         .toString()
-        .slice(-4)}${ticketMarketGroups.length > 1 ? `-${idx + 1}` : ''}`;
+        .slice(-4)}${ticketMatchGroups.length > 1 ? `-${idx + 1}` : ''}`;
 
       const [createdBet] = await tx
         .insert(virtualBets)
@@ -216,7 +255,7 @@ export async function placeVirtualBet(input: PlaceBetInput) {
 
       createdBets.push(createdBet);
 
-      const selectionRows = group.map((mkt) => {
+      const selectionRows = flatMarkets.map((mkt) => {
         const match = matchById.get(mkt.matchId)!;
         const home = teamById.get(match.homeTeamId)?.name || 'Home';
         const away = teamById.get(match.awayTeamId)?.name || 'Away';
@@ -237,10 +276,10 @@ export async function placeVirtualBet(input: PlaceBetInput) {
 
     const txLabel =
       mode === 'single'
-        ? `Single ×${ticketMarketGroups.length} (${createdBets.map((b) => b.reference).join(', ')})`
+        ? `Single ×${ticketMatchGroups.length} (${createdBets.map((b) => b.reference).join(', ')})`
         : mode === 'system'
-        ? `System ${systemLabel} · ${ticketMarketGroups.length} combos`
-        : `Combo Slip ${createdBets[0].reference} (${dbMarkets.length} legs)`;
+        ? `System ${systemLabel} · ${ticketMatchGroups.length} combos`
+        : `Slip ${createdBets[0].reference} (${dbMarkets.length} legs)`;
 
     await tx.insert(transactions).values({
       userId: input.userId,
@@ -286,25 +325,34 @@ function evaluateSelectionResult(
     if (selectionName === 'X or 2' || selectionName === 'X2') return awayScore >= homeScore ? 'won' : 'lost';
   }
 
-  if (marketType === 'Total' || marketType === 'Over/Under 2.5 Goals' || marketType === 'Total Points') {
+  if (marketType === 'Total' || marketType === 'Over/Under 2.5 Goals' || marketType === 'Total Points' || marketType === 'Total Games') {
     const numMatch = selectionName.match(/([0-9]+(?:\.[0-9]+)?)/);
     const line = numMatch ? Number(numMatch[1]) : 2.5;
     if (selectionName.toLowerCase().includes('over')) return total > line ? 'won' : 'lost';
     if (selectionName.toLowerCase().includes('under')) return total < line ? 'won' : 'lost';
   }
 
-  if (marketType.startsWith('1st Team Total')) {
+  if (marketType.startsWith('1st Team Total') || marketType.startsWith('1st Player Games')) {
     const numMatch = selectionName.match(/([0-9]+(?:\.[0-9]+)?)/);
     const line = numMatch ? Number(numMatch[1]) : 0.5;
     if (selectionName.toLowerCase().includes('over')) return homeScore > line ? 'won' : 'lost';
     if (selectionName.toLowerCase().includes('under')) return homeScore < line ? 'won' : 'lost';
   }
 
-  if (marketType.startsWith('2nd Team Total')) {
+  if (marketType.startsWith('2nd Team Total') || marketType.startsWith('2nd Player Games')) {
     const numMatch = selectionName.match(/([0-9]+(?:\.[0-9]+)?)/);
     const line = numMatch ? Number(numMatch[1]) : 0.5;
     if (selectionName.toLowerCase().includes('over')) return awayScore > line ? 'won' : 'lost';
     if (selectionName.toLowerCase().includes('under')) return awayScore < line ? 'won' : 'lost';
+  }
+
+  if (marketType === 'Handicap') {
+    const numMatch = selectionName.match(/([+-]\d+(?:\.\d+)?)/);
+    if (numMatch) {
+      const hcap = Number(numMatch[1]);
+      if (hcap < 0) return homeScore + hcap > awayScore ? 'won' : 'lost';
+      return awayScore + hcap > homeScore ? 'won' : 'lost';
+    }
   }
 
   if (marketType === 'Both Teams to Score') {

@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { createMockDb } from './mockDb.ts';
 import * as schema from './schema.ts';
 
 declare global {
@@ -84,7 +85,7 @@ export const createPool = () => {
         ssl: hostSslEnabled ? { rejectUnauthorized: false } : undefined,
         max: isVercel ? 3 : 10,
         idleTimeoutMillis: 10_000,
-        connectionTimeoutMillis: isVercel ? 8_000 : 15_000,
+        connectionTimeoutMillis: host === 'localhost' || host === '127.0.0.1' ? 1_500 : isVercel ? 8_000 : 15_000,
       });
     } else if (connectionString) {
       global._postgresPool = new Pool({
@@ -102,7 +103,7 @@ export const createPool = () => {
         database: 'sportzone',
         max: isVercel ? 2 : 10,
         idleTimeoutMillis: 5_000,
-        connectionTimeoutMillis: isVercel ? 3_000 : 15_000,
+        connectionTimeoutMillis: 1_500,
       });
     }
 
@@ -113,7 +114,52 @@ export const createPool = () => {
   return global._postgresPool;
 };
 
-const pool = createPool();
+type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
 
-export const db = drizzle(pool, { schema });
-export { pool };
+let isUsingMockDb = !hasDatabaseConfig;
+let pool: Pool | null = null;
+let activeDb: DrizzleDb = createMockDb() as unknown as DrizzleDb;
+let readyPromise: Promise<void> | null = null;
+
+export async function ensureDbReady(): Promise<void> {
+  if (readyPromise) return readyPromise;
+
+  readyPromise = (async () => {
+    if (!hasDatabaseConfig) {
+      isUsingMockDb = true;
+      console.warn('[AI Studio] Database not configured — using in-memory mock store');
+      return;
+    }
+
+    try {
+      const candidatePool = createPool();
+      await candidatePool.query('SELECT 1');
+      pool = candidatePool;
+      activeDb = drizzle(candidatePool, { schema });
+      isUsingMockDb = false;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[AI Studio] PostgreSQL unreachable (${msg}) — falling back to in-memory mock store`);
+      isUsingMockDb = true;
+      activeDb = createMockDb() as unknown as DrizzleDb;
+      try {
+        await global._postgresPool?.end();
+      } catch {
+        // Ignore cleanup errors on failed pool
+      }
+      global._postgresPool = undefined;
+      pool = null;
+    }
+  })();
+
+  return readyPromise;
+}
+
+const db = new Proxy({} as DrizzleDb, {
+  get(_target, prop, receiver) {
+    const value = Reflect.get(activeDb as object, prop, receiver);
+    return typeof value === 'function' ? value.bind(activeDb) : value;
+  },
+});
+
+export { db, isUsingMockDb, pool };

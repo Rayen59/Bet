@@ -31,22 +31,89 @@ export function BrandLogo({ className = '' }: { className?: string }) {
   );
 }
 
+const KIT_PALETTES = [
+  { primary: '#ffffff', secondary: '#7dd3fc', striped: true },
+  { primary: '#eab308', secondary: '#b91c1c', striped: true },
+  { primary: '#dc2626', secondary: '#ffffff', striped: false },
+  { primary: '#2563eb', secondary: '#1e3a8a', striped: true },
+  { primary: '#16a34a', secondary: '#ffffff', striped: false },
+  { primary: '#18181b', secondary: '#f5b800', striped: true },
+  { primary: '#f472b6', secondary: '#ec4899', striped: true },
+];
+
+function kitFromSeed(seed: string, fallbackHex: string) {
+  if (/^#[0-9A-Fa-f]{3,6}$/.test(fallbackHex)) {
+    return { primary: fallbackHex, secondary: '#18181b', striped: false };
+  }
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return KIT_PALETTES[hash % KIT_PALETTES.length];
+}
+
 export function TeamBadge({
   shortName,
   color = '#f5b800',
   size = 'md',
   variant = 'crest',
+  striped,
 }: {
   shortName: string;
   color?: string;
   size?: 'sm' | 'md' | 'lg';
   variant?: 'crest' | 'jersey';
+  striped?: boolean;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const isUrl = color.startsWith('http://') || color.startsWith('https://');
   const safeColor = /^#[0-9A-Fa-f]{3,6}$/.test(color) ? color : '#e4e4e7';
   const dim =
-    size === 'sm' ? 'w-7 h-7 text-[10px]' : size === 'lg' ? 'w-12 h-12 text-sm' : 'w-10 h-10 text-xs';
+    size === 'sm'
+      ? 'w-7 h-7 text-[10px]'
+      : size === 'lg'
+      ? 'w-12 h-12 text-xs'
+      : 'w-11 h-11 text-xs';
+
+  if (variant === 'jersey') {
+    const kit = kitFromSeed(shortName, color);
+    const useStripes = striped ?? kit.striped;
+    const clipId = `kit_${shortName.replace(/[^a-zA-Z0-9]/g, '')}_${useStripes ? 's' : 'p'}`;
+
+    return (
+      <div
+        className={`${dim} rounded-full bg-[#242427] border border-zinc-600/80 flex items-center justify-center shrink-0 shadow-inner`}
+        title={shortName}
+      >
+        <svg viewBox="0 0 36 36" className="w-[74%] h-[74%]" aria-hidden="true">
+          <defs>
+            <clipPath id={clipId}>
+              <path d="M12 6 L15 8 C16.8 9.2 19.2 9.2 21 8 L24 6 L31 10.5 L28 16 L24.5 14.5 L24.5 30 L11.5 30 L11.5 14.5 L8 16 L5 10.5 Z" />
+            </clipPath>
+          </defs>
+          <path
+            d="M12 6 L15 8 C16.8 9.2 19.2 9.2 21 8 L24 6 L31 10.5 L28 16 L24.5 14.5 L24.5 30 L11.5 30 L11.5 14.5 L8 16 L5 10.5 Z"
+            fill={kit.primary}
+            stroke="#111111"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+          {useStripes && (
+            <g clipPath={`url(#${clipId})`}>
+              <rect x="13.5" y="5" width="3" height="26" fill={kit.secondary} opacity="0.88" />
+              <rect x="19.5" y="5" width="3" height="26" fill={kit.secondary} opacity="0.88" />
+            </g>
+          )}
+          <path
+            d="M15 8 C16.5 10.2 19.5 10.2 21 8"
+            fill="none"
+            stroke="#111111"
+            strokeWidth="1.3"
+          />
+        </svg>
+      </div>
+    );
+  }
 
   if (isUrl && !imgFailed) {
     return (
@@ -60,31 +127,6 @@ export function TeamBadge({
           onError={() => setImgFailed(true)}
           className="w-full h-full object-contain"
         />
-      </div>
-    );
-  }
-
-  if (variant === 'jersey') {
-    return (
-      <div
-        className={`${dim} rounded-full bg-[#232327] border border-zinc-600 flex items-center justify-center shrink-0`}
-        title={shortName}
-      >
-        <svg viewBox="0 0 36 36" className="w-[72%] h-[72%]" aria-hidden="true">
-          <path
-            d="M12 6 L15 8 C16.8 9.2 19.2 9.2 21 8 L24 6 L31 10.5 L28 16 L24.5 14.5 L24.5 30 L11.5 30 L11.5 14.5 L8 16 L5 10.5 Z"
-            fill={safeColor}
-            stroke="#111111"
-            strokeWidth="1.2"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M15 8 C16.5 10.2 19.5 10.2 21 8"
-            fill="none"
-            stroke="#111111"
-            strokeWidth="1.2"
-          />
-        </svg>
       </div>
     );
   }

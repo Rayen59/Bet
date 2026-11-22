@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { and, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
-import { db, dbConfigSource, hasDatabaseConfig } from './db/index.ts';
+import { db, dbConfigSource, ensureDbReady, hasDatabaseConfig, isUsingMockDb } from './db/index.ts';
 import {
   auditLogs,
   competitions,
@@ -65,6 +65,7 @@ function sendApiError(res: Response, error: unknown, fallbackMessage: string, de
 }
 
 app.get('/api/health', async (_req, res) => {
+  await ensureDbReady();
   let dbConnected = false;
   let dbError: string | undefined;
   if (hasDatabaseConfig || process.env.VERCEL !== '1') {
@@ -82,7 +83,7 @@ app.get('/api/health', async (_req, res) => {
     status: dbConnected ? 'ok' : 'degraded',
     service: 'SPORTZONE',
     dbConfigured: hasDatabaseConfig,
-    dbSource: dbConfigSource,
+    dbSource: isUsingMockDb ? 'in-memory' : dbConfigSource,
     dbConnected,
     ...(dbError ? { error: dbError } : {}),
   });
@@ -143,6 +144,7 @@ const isStatelessVercelMode = () => process.env.VERCEL === '1' && !hasDatabaseCo
 
 // Ensure core DB tables, sports, and admin account exist before DB-backed API routes execute
 app.use('/api', async (req, res, next) => {
+  await ensureDbReady();
   if (
     req.path === '/health' ||
     req.path === '/stream' ||

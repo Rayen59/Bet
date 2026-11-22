@@ -25,7 +25,7 @@ export function LeaderboardView() {
         </p>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-[#18181b] overflow-hidden">
+      <div className="rounded-xl border border-[#232734] bg-[#13161d] overflow-hidden">
         {loading ? (
           <div className="p-6 space-y-3">
             <div className="h-10 bg-zinc-900 rounded animate-pulse" />
@@ -146,7 +146,7 @@ export function PromotionsView({ onNavigate }: { onNavigate: (route: AppRoute) =
           {offers.map((offer) => (
             <div
               key={offer.code}
-              className="rounded-xl border border-zinc-800 bg-[#18181b] p-5 flex flex-col justify-between gap-4"
+              className="rounded-xl border border-[#232734] bg-[#13161d] p-5 flex flex-col justify-between gap-4"
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-zinc-400">
@@ -189,7 +189,7 @@ export function PromotionsView({ onNavigate }: { onNavigate: (route: AppRoute) =
         </div>
       )}
 
-      <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-4 flex items-center gap-3 text-xs text-zinc-400">
+      <div className="rounded-xl border border-[#232734] bg-[#13161d] p-4 flex items-center gap-3 text-xs text-zinc-400">
         <Award className="w-4 h-4 text-[#f5b800] shrink-0" />
         <span>
           Virtual DT credits cannot be exchanged for real money, goods, or services. They exist solely for sports simulation analytics.

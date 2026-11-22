@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { eq, inArray, like, ne, sql } from 'drizzle-orm';
-import { assertDatabaseConfigured, db } from '../db/index.ts';
+import { assertDatabaseConfigured, db, ensureDbReady } from '../db/index.ts';
 import {
   auditLogs,
   competitions,
@@ -1374,6 +1374,7 @@ export async function ensureCoreSeeded(): Promise<void> {
 
   coreSeedPromise = (async () => {
     try {
+      await ensureDbReady();
       assertDatabaseConfigured();
       await ensureSchemaTables();
 
