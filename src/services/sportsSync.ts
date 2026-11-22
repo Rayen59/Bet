@@ -1,0 +1,1195 @@
+import bcrypt from 'bcryptjs';
+import { eq, inArray, like, ne, sql } from 'drizzle-orm';
+import { db } from '../db/index.ts';
+import {
+  auditLogs,
+  competitions,
+  markets,
+  matches,
+  sports,
+  teams,
+  users,
+  virtualBetSelections,
+} from '../db/schema.ts';
+import { americanToDecimal } from './matchCenter.ts';
+import { settleBetsForFinishedMatch } from './bettingEngine.ts';
+import { realtimeHub } from './realtimeHub.ts';
+
+interface LiveFeedSpec {
+  url: string;
+  sportSlug: string;
+  competitionSlug: string;
+  competitionName: string;
+  country: string;
+}
+
+const PUBLIC_LIVE_FEEDS: LiveFeedSpec[] = [
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'premier-league',
+    competitionName: 'Premier League',
+    country: 'England',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'bundesliga',
+    competitionName: 'Bundesliga',
+    country: 'Germany',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'la-liga',
+    competitionName: 'La Liga',
+    country: 'Spain',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'serie-a',
+    competitionName: 'Serie A',
+    country: 'Italy',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'ligue-1',
+    competitionName: 'Ligue 1',
+    country: 'France',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ned.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'eredivisie',
+    competitionName: 'Eredivisie',
+    country: 'Netherlands',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/usa.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'mls',
+    competitionName: 'MLS',
+    country: 'USA',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/por.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'primeira-liga',
+    competitionName: 'Liga Portugal',
+    country: 'Portugal',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/tur.1/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'super-lig',
+    competitionName: 'Super Lig',
+    country: 'Turkey',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'champions-league',
+    competitionName: 'UEFA Champions League',
+    country: 'Europe',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/eng.2/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'efl-championship',
+    competitionName: 'EFL Championship',
+    country: 'England',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
+    sportSlug: 'basketball',
+    competitionSlug: 'nba',
+    competitionName: 'NBA',
+    country: 'USA',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/atp/scoreboard',
+    sportSlug: 'tennis',
+    competitionSlug: 'atp-tour',
+    competitionName: 'ATP Tour',
+    country: 'International',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/tennis/wta/scoreboard',
+    sportSlug: 'tennis',
+    competitionSlug: 'wta-tour',
+    competitionName: 'WTA Tour',
+    country: 'International',
+  },
+];
+
+// Top football leagues for LiveScore schedule filtering (while ALL live football matches always sync)
+const PRIORITY_LIVESCORE_LEAGUES = new Set([
+  'premier league',
+  'laliga',
+  'la liga',
+  'bundesliga',
+  'serie a',
+  'ligue 1',
+  'champions league',
+  'europa league',
+  'eredivisie',
+  'liga portugal',
+  'super lig',
+  'championship',
+  'mls',
+  'pro league',
+  'scottish premiership',
+  'jupiler pro league',
+  'botola pro',
+  'ligue 1 tunisia',
+  'serie b',
+  '2. bundesliga',
+  'segunda division',
+  'super league',
+  'j1 league',
+  'k league 1',
+  'k league 2',
+  'liga mx',
+]);
+
+const TEAM_COLORS = [
+  '#eab308',
+  '#38bdf8',
+  '#10b981',
+  '#f97316',
+  '#ef4444',
+  '#6366f1',
+  '#14b8a6',
+  '#ec4899',
+];
+
+function pickColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return TEAM_COLORS[Math.abs(hash) % TEAM_COLORS.length];
+}
+
+function makeShortName(name: string): string {
+  const cleaned = name.replace(/[^a-zA-Z0-9 ]/g, '').trim();
+  const words = cleaned.split(/\s+/);
+  if (words.length >= 2) {
+    return (words[0][0] + words[1].slice(0, 2)).toUpperCase();
+  }
+  return cleaned.slice(0, 3).toUpperCase() || 'TM';
+}
+
+function normalizeTeamKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b(fc|cf|sc|ac|as|afc|ss|us|cd|ud|rc|rcd|vfl|vfb|tsv|fsv|bsc|rb|fk|sk|bk)\b/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+function toYmd(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+function parseLiveScoreDate(esd: number | string | undefined): Date {
+  const s = String(esd || '');
+  if (s.length >= 14) {
+    const year = Number(s.slice(0, 4));
+    const month = Number(s.slice(4, 6)) - 1;
+    const day = Number(s.slice(6, 8));
+    const hour = Number(s.slice(8, 10));
+    const min = Number(s.slice(10, 12));
+    const sec = Number(s.slice(12, 14));
+    const dt = new Date(Date.UTC(year, month, day, hour, min, sec));
+    if (!Number.isNaN(dt.getTime())) return dt;
+  }
+  return new Date();
+}
+
+function parseLiveScoreStatus(
+  esid: number | undefined,
+  eps: string | undefined,
+  isLiveFeed = false
+): 'live' | 'upcoming' | 'finished' | 'skip' {
+  const e = String(eps || '').trim();
+  const upper = e.toUpperCase();
+  if (esid === 56 || upper === 'CANC.' || upper === 'POSTP.' || upper === 'ABD.' || upper === 'AWD.') {
+    return 'skip';
+  }
+  if (
+    esid === 6 ||
+    esid === 7 ||
+    esid === 8 ||
+    upper === 'FT' ||
+    upper === 'AET' ||
+    upper === 'AP' ||
+    upper === 'AFTER ET'
+  ) {
+    return 'finished';
+  }
+  if (
+    isLiveFeed ||
+    esid === 2 ||
+    esid === 3 ||
+    esid === 4 ||
+    esid === 12 ||
+    upper === 'HT' ||
+    upper === 'INT.' ||
+    upper === 'ET' ||
+    upper === 'PEN' ||
+    e.includes("'")
+  ) {
+    return 'live';
+  }
+  return 'upcoming';
+}
+
+function clampOdd(val: number): number {
+  return Math.max(1.02, Math.min(35.0, Math.round(val * 100) / 100));
+}
+
+function extractLiveMinute(timer: string): number {
+  if (timer.toUpperCase() === 'HT') return 45;
+  const m = timer.match(/(\d+)/);
+  return m ? Math.min(95, Math.max(1, Number(m[1]))) : 45;
+}
+
+export interface RealOddsHint {
+  homeOdd?: number | null;
+  drawOdd?: number | null;
+  awayOdd?: number | null;
+  overUnderLine?: number | null;
+  overOdd?: number | null;
+  underOdd?: number | null;
+}
+
+export function buildSimulatedMarketsForSport(
+  matchId: number,
+  sportSlug: string,
+  homeName: string,
+  awayName: string,
+  seedBias = 0,
+  oddsHint?: RealOddsHint
+) {
+  const jitter = (base: number, idx: number) => {
+    const offset = (((seedBias + idx * 13) % 15) - 7) * 0.04;
+    return Math.max(1.06, Math.round((base + offset) * 100) / 100);
+  };
+
+  const homeShort = makeShortName(homeName);
+  const awayShort = makeShortName(awayName);
+
+  if (sportSlug === 'football') {
+    const h1 = oddsHint?.homeOdd ?? jitter(1.95, 1);
+    const dx = oddsHint?.drawOdd ?? jitter(3.55, 2);
+    const a2 = oddsHint?.awayOdd ?? jitter(3.65, 3);
+
+    return [
+      { matchId, marketType: '1×2', selectionName: '1', simulatedOdds: h1, active: true },
+      { matchId, marketType: '1×2', selectionName: 'X', simulatedOdds: dx, active: true },
+      { matchId, marketType: '1×2', selectionName: '2', simulatedOdds: a2, active: true },
+
+      { matchId, marketType: 'Double chance', selectionName: '1 or X', simulatedOdds: clampOdd(1 / (1 / h1 + 1 / dx) * 0.94), active: true },
+      { matchId, marketType: 'Double chance', selectionName: '1 or 2', simulatedOdds: clampOdd(1 / (1 / h1 + 1 / a2) * 0.94), active: true },
+      { matchId, marketType: 'Double chance', selectionName: 'X or 2', simulatedOdds: clampOdd(1 / (1 / dx + 1 / a2) * 0.94), active: true },
+
+      { matchId, marketType: 'Total', selectionName: 'Over 0.5', simulatedOdds: jitter(1.07, 7), active: true },
+      { matchId, marketType: 'Total', selectionName: 'Over 1.5', simulatedOdds: jitter(1.28, 8), active: true },
+      { matchId, marketType: 'Total', selectionName: 'Under 1.5', simulatedOdds: jitter(3.45, 9), active: true },
+      { matchId, marketType: 'Total', selectionName: 'Over 2.5', simulatedOdds: oddsHint?.overOdd ?? jitter(1.84, 10), active: true },
+      { matchId, marketType: 'Total', selectionName: 'Under 2.5', simulatedOdds: oddsHint?.underOdd ?? jitter(1.96, 11), active: true },
+      { matchId, marketType: 'Total', selectionName: 'Over 3.5', simulatedOdds: jitter(3.05, 12), active: true },
+      { matchId, marketType: 'Total', selectionName: 'Under 3.5', simulatedOdds: jitter(1.36, 13), active: true },
+
+      { matchId, marketType: `1st Team Total (${homeShort})`, selectionName: '1st Total Over 0.5', simulatedOdds: jitter(1.24, 14), active: true },
+      { matchId, marketType: `1st Team Total (${homeShort})`, selectionName: '1st Total Under 0.5', simulatedOdds: jitter(3.85, 15), active: true },
+      { matchId, marketType: `1st Team Total (${homeShort})`, selectionName: '1st Total Over 1.5', simulatedOdds: jitter(2.02, 16), active: true },
+      { matchId, marketType: `1st Team Total (${homeShort})`, selectionName: '1st Total Under 1.5', simulatedOdds: jitter(1.76, 17), active: true },
+      { matchId, marketType: `1st Team Total (${homeShort})`, selectionName: '1st Total Over 2.5', simulatedOdds: jitter(4.15, 18), active: true },
+      { matchId, marketType: `1st Team Total (${homeShort})`, selectionName: '1st Total Under 2.5', simulatedOdds: jitter(1.21, 19), active: true },
+
+      { matchId, marketType: `2nd Team Total (${awayShort})`, selectionName: '2nd Total Over 0.5', simulatedOdds: jitter(1.38, 20), active: true },
+      { matchId, marketType: `2nd Team Total (${awayShort})`, selectionName: '2nd Total Under 0.5', simulatedOdds: jitter(2.95, 21), active: true },
+      { matchId, marketType: `2nd Team Total (${awayShort})`, selectionName: '2nd Total Over 1.5', simulatedOdds: jitter(2.65, 22), active: true },
+      { matchId, marketType: `2nd Team Total (${awayShort})`, selectionName: '2nd Total Under 1.5', simulatedOdds: jitter(1.45, 23), active: true },
+      { matchId, marketType: `2nd Team Total (${awayShort})`, selectionName: '2nd Total Over 2.5', simulatedOdds: jitter(5.6, 24), active: true },
+      { matchId, marketType: `2nd Team Total (${awayShort})`, selectionName: '2nd Total Under 2.5', simulatedOdds: jitter(1.13, 25), active: true },
+
+      { matchId, marketType: 'Both Teams to Score', selectionName: 'Yes', simulatedOdds: jitter(1.74, 26), active: true },
+      { matchId, marketType: 'Both Teams to Score', selectionName: 'No', simulatedOdds: jitter(2.06, 27), active: true },
+
+      { matchId, marketType: 'Total Cards', selectionName: 'Cards Over 2.5', simulatedOdds: jitter(1.32, 28), active: true },
+      { matchId, marketType: 'Total Cards', selectionName: 'Cards Under 2.5', simulatedOdds: jitter(3.25, 29), active: true },
+      { matchId, marketType: 'Total Cards', selectionName: 'Cards Over 3.5', simulatedOdds: jitter(1.78, 30), active: true },
+      { matchId, marketType: 'Total Cards', selectionName: 'Cards Under 3.5', simulatedOdds: jitter(1.98, 31), active: true },
+      { matchId, marketType: 'Total Cards', selectionName: 'Cards Over 4.5', simulatedOdds: jitter(2.55, 32), active: true },
+      { matchId, marketType: 'Total Cards', selectionName: 'Red Card · Yes', simulatedOdds: jitter(4.65, 33), active: true },
+      { matchId, marketType: 'Total Cards', selectionName: 'Red Card · No', simulatedOdds: jitter(1.17, 34), active: true },
+
+      { matchId, marketType: 'Team Cards (1st / 2nd)', selectionName: `${homeShort} Cards Over 1.5`, simulatedOdds: jitter(1.88, 35), active: true },
+      { matchId, marketType: 'Team Cards (1st / 2nd)', selectionName: `${homeShort} Cards Under 1.5`, simulatedOdds: jitter(1.88, 36), active: true },
+      { matchId, marketType: 'Team Cards (1st / 2nd)', selectionName: `${awayShort} Cards Over 1.5`, simulatedOdds: jitter(1.75, 37), active: true },
+      { matchId, marketType: 'Team Cards (1st / 2nd)', selectionName: `${awayShort} Cards Under 1.5`, simulatedOdds: jitter(2.02, 38), active: true },
+
+      { matchId, marketType: 'Injuries & Stoppages', selectionName: 'Injury Sub · Yes', simulatedOdds: jitter(3.15, 39), active: true },
+      { matchId, marketType: 'Injuries & Stoppages', selectionName: 'Injury Sub · No', simulatedOdds: jitter(1.33, 40), active: true },
+      { matchId, marketType: 'Injuries & Stoppages', selectionName: 'Stoppage Time Over 4.5m', simulatedOdds: jitter(1.85, 41), active: true },
+      { matchId, marketType: 'Injuries & Stoppages', selectionName: 'Stoppage Time Under 4.5m', simulatedOdds: jitter(1.91, 42), active: true },
+
+      { matchId, marketType: 'First-Half Result', selectionName: '1 (HT)', simulatedOdds: jitter(2.65, 43), active: true },
+      { matchId, marketType: 'First-Half Result', selectionName: 'X (HT)', simulatedOdds: jitter(2.15, 44), active: true },
+      { matchId, marketType: 'First-Half Result', selectionName: '2 (HT)', simulatedOdds: jitter(3.85, 45), active: true },
+
+      { matchId, marketType: 'Correct Score', selectionName: '1-0', simulatedOdds: jitter(7.2, 46), active: true },
+      { matchId, marketType: 'Correct Score', selectionName: '2-0', simulatedOdds: jitter(9.2, 47), active: true },
+      { matchId, marketType: 'Correct Score', selectionName: '2-1', simulatedOdds: jitter(8.5, 48), active: true },
+      { matchId, marketType: 'Correct Score', selectionName: '1-1', simulatedOdds: jitter(6.4, 49), active: true },
+      { matchId, marketType: 'Correct Score', selectionName: '0-0', simulatedOdds: jitter(10.5, 50), active: true },
+      { matchId, marketType: 'Correct Score', selectionName: '0-1', simulatedOdds: jitter(11.0, 51), active: true },
+      { matchId, marketType: 'Correct Score', selectionName: '1-2', simulatedOdds: jitter(12.5, 52), active: true },
+    ];
+  }
+
+  if (sportSlug === 'basketball') {
+    const hWin = oddsHint?.homeOdd ?? jitter(1.78, 1);
+    const aWin = oddsHint?.awayOdd ?? jitter(2.08, 2);
+    const line = oddsHint?.overUnderLine ?? 222.5;
+    const halfLine = Math.round((line / 2) * 2) / 2;
+
+    return [
+      { matchId, marketType: 'Match Winner', selectionName: homeName, simulatedOdds: hWin, active: true },
+      { matchId, marketType: 'Match Winner', selectionName: awayName, simulatedOdds: aWin, active: true },
+      { matchId, marketType: 'Total Points', selectionName: `Over ${line}`, simulatedOdds: oddsHint?.overOdd ?? jitter(1.9, 3), active: true },
+      { matchId, marketType: 'Total Points', selectionName: `Under ${line}`, simulatedOdds: oddsHint?.underOdd ?? jitter(1.92, 4), active: true },
+      { matchId, marketType: `1st Team Total (${homeShort})`, selectionName: `1st Total Over ${halfLine}`, simulatedOdds: jitter(1.88, 5), active: true },
+      { matchId, marketType: `1st Team Total (${homeShort})`, selectionName: `1st Total Under ${halfLine}`, simulatedOdds: jitter(1.92, 6), active: true },
+      { matchId, marketType: `2nd Team Total (${awayShort})`, selectionName: `2nd Total Over ${(halfLine - 1).toFixed(1)}`, simulatedOdds: jitter(1.9, 7), active: true },
+      { matchId, marketType: `2nd Team Total (${awayShort})`, selectionName: `2nd Total Under ${(halfLine - 1).toFixed(1)}`, simulatedOdds: jitter(1.9, 8), active: true },
+      { matchId, marketType: 'Handicap', selectionName: `${homeShort} -4.5`, simulatedOdds: jitter(1.94, 9), active: true },
+      { matchId, marketType: 'Handicap', selectionName: `${awayShort} +4.5`, simulatedOdds: jitter(1.88, 10), active: true },
+      { matchId, marketType: 'Fouls & Stoppages', selectionName: 'Tech Foul · Yes', simulatedOdds: jitter(2.35, 11), active: true },
+      { matchId, marketType: 'Fouls & Stoppages', selectionName: 'Tech Foul · No', simulatedOdds: jitter(1.56, 12), active: true },
+    ];
+  }
+
+  if (sportSlug === 'tennis') {
+    return [
+      { matchId, marketType: 'Match Winner', selectionName: homeName, simulatedOdds: jitter(1.65, 1), active: true },
+      { matchId, marketType: 'Match Winner', selectionName: awayName, simulatedOdds: jitter(2.25, 2), active: true },
+      { matchId, marketType: 'Set Winner', selectionName: `Set 1 · ${homeShort}`, simulatedOdds: jitter(1.72, 3), active: true },
+      { matchId, marketType: 'Set Winner', selectionName: `Set 1 · ${awayShort}`, simulatedOdds: jitter(2.1, 4), active: true },
+      { matchId, marketType: 'Total Games', selectionName: 'Over 22.5', simulatedOdds: jitter(1.86, 5), active: true },
+      { matchId, marketType: 'Total Games', selectionName: 'Under 22.5', simulatedOdds: jitter(1.94, 6), active: true },
+      { matchId, marketType: `1st Player Games (${homeShort})`, selectionName: '1st Total Over 12.5', simulatedOdds: jitter(1.85, 7), active: true },
+      { matchId, marketType: `2nd Player Games (${awayShort})`, selectionName: '2nd Total Over 11.5', simulatedOdds: jitter(1.92, 8), active: true },
+    ];
+  }
+
+  if (sportSlug === 'volleyball') {
+    return [
+      { matchId, marketType: 'Match Winner', selectionName: homeName, simulatedOdds: jitter(1.7, 1), active: true },
+      { matchId, marketType: 'Match Winner', selectionName: awayName, simulatedOdds: jitter(2.16, 2), active: true },
+      { matchId, marketType: 'Set Winner', selectionName: `Set 1 · ${homeShort}`, simulatedOdds: jitter(1.76, 3), active: true },
+      { matchId, marketType: 'Set Winner', selectionName: `Set 1 · ${awayShort}`, simulatedOdds: jitter(2.04, 4), active: true },
+    ];
+  }
+
+  return [
+    { matchId, marketType: 'Match Winner', selectionName: homeName, simulatedOdds: jitter(1.82, 1), active: true },
+    { matchId, marketType: 'Match Winner', selectionName: awayName, simulatedOdds: jitter(1.98, 2), active: true },
+    { matchId, marketType: 'Map Winner', selectionName: `Map 1 · ${homeShort}`, simulatedOdds: jitter(1.84, 3), active: true },
+    { matchId, marketType: 'Map Winner', selectionName: `Map 1 · ${awayShort}`, simulatedOdds: jitter(1.96, 4), active: true },
+  ];
+}
+
+// Live in-play odds engine: updates live football/basketball odds based on actual live score, minute & market hint
+async function updateDynamicLiveOdds(
+  matchId: number,
+  sportSlug: string,
+  homeScore: number,
+  awayScore: number,
+  matchTimer: string,
+  oddsHint?: RealOddsHint
+) {
+  const existingMkts = await db.select().from(markets).where(eq(markets.matchId, matchId));
+  if (existingMkts.length === 0) return;
+
+  if (sportSlug === 'football') {
+    const minute = extractLiveMinute(matchTimer);
+    const remFrac = Math.max(0.08, (90 - minute) / 90);
+    const diff = homeScore - awayScore;
+    const totalGoals = homeScore + awayScore;
+
+    let h1 = oddsHint?.homeOdd ?? null;
+    let dx = oddsHint?.drawOdd ?? null;
+    let a2 = oddsHint?.awayOdd ?? null;
+
+    if (!h1 || !dx || !a2) {
+      // Realistic Poisson-inspired live probability shift from score + remaining time
+      let pH = 0.38;
+      let pD = 0.28;
+      let pA = 0.34;
+      if (diff > 0) {
+        pH = Math.min(0.95, 0.55 + diff * 0.22 + (1 - remFrac) * 0.22);
+        pD = Math.max(0.03, (1 - pH) * 0.65);
+        pA = Math.max(0.02, 1 - pH - pD);
+      } else if (diff < 0) {
+        pA = Math.min(0.95, 0.55 + Math.abs(diff) * 0.22 + (1 - remFrac) * 0.22);
+        pD = Math.max(0.03, (1 - pA) * 0.65);
+        pH = Math.max(0.02, 1 - pA - pD);
+      } else {
+        pD = Math.min(0.84, 0.29 + (1 - remFrac) * 0.48);
+        pH = (1 - pD) * 0.52;
+        pA = 1 - pD - pH;
+      }
+      h1 = clampOdd(0.94 / pH);
+      dx = clampOdd(0.94 / pD);
+      a2 = clampOdd(0.94 / pA);
+    }
+
+    const dc1x = clampOdd(0.94 / (0.94 / h1 + 0.94 / dx));
+    const dc12 = clampOdd(0.94 / (0.94 / h1 + 0.94 / a2));
+    const dcx2 = clampOdd(0.94 / (0.94 / dx + 0.94 / a2));
+
+    for (const mkt of existingMkts) {
+      let nextOdd = mkt.simulatedOdds;
+      let nextActive = true;
+
+      if (mkt.marketType === '1×2') {
+        if (mkt.selectionName === '1') nextOdd = h1;
+        else if (mkt.selectionName === 'X') nextOdd = dx;
+        else if (mkt.selectionName === '2') nextOdd = a2;
+      } else if (mkt.marketType === 'Double chance') {
+        if (mkt.selectionName === '1 or X') nextOdd = dc1x;
+        else if (mkt.selectionName === '1 or 2') nextOdd = dc12;
+        else if (mkt.selectionName === 'X or 2') nextOdd = dcx2;
+      } else if (mkt.marketType === 'Total') {
+        const numMatch = mkt.selectionName.match(/([\d.]+)/);
+        const line = numMatch ? Number(numMatch[1]) : 2.5;
+        if (totalGoals > line) {
+          // Already over threshold — suspend already-decided Total lines
+          nextActive = false;
+        } else {
+          const needed = Math.ceil(line - totalGoals);
+          const expectedRem = Math.max(0.15, 2.5 * remFrac);
+          const pOver = Math.min(0.94, Math.max(0.06, expectedRem / (expectedRem + needed * 1.15)));
+          if (mkt.selectionName.startsWith('Over')) nextOdd = clampOdd(0.94 / pOver);
+          else nextOdd = clampOdd(0.94 / (1 - pOver));
+        }
+      } else if (mkt.marketType.startsWith('1st Team Total')) {
+        const numMatch = mkt.selectionName.match(/([\d.]+)/);
+        const line = numMatch ? Number(numMatch[1]) : 1.5;
+        if (homeScore > line) nextActive = false;
+        else {
+          const needed = Math.ceil(line - homeScore);
+          const expectedRem = Math.max(0.1, 1.35 * remFrac);
+          const pOver = Math.min(0.92, Math.max(0.05, expectedRem / (expectedRem + needed * 1.2)));
+          nextOdd = mkt.selectionName.includes('Over') ? clampOdd(0.94 / pOver) : clampOdd(0.94 / (1 - pOver));
+        }
+      } else if (mkt.marketType.startsWith('2nd Team Total')) {
+        const numMatch = mkt.selectionName.match(/([\d.]+)/);
+        const line = numMatch ? Number(numMatch[1]) : 1.5;
+        if (awayScore > line) nextActive = false;
+        else {
+          const needed = Math.ceil(line - awayScore);
+          const expectedRem = Math.max(0.1, 1.15 * remFrac);
+          const pOver = Math.min(0.92, Math.max(0.05, expectedRem / (expectedRem + needed * 1.2)));
+          nextOdd = mkt.selectionName.includes('Over') ? clampOdd(0.94 / pOver) : clampOdd(0.94 / (1 - pOver));
+        }
+      }
+
+      if (Math.abs(nextOdd - mkt.simulatedOdds) >= 0.02 || nextActive !== mkt.active) {
+        await db
+          .update(markets)
+          .set({ simulatedOdds: nextOdd, active: nextActive })
+          .where(eq(markets.id, mkt.id));
+      }
+    }
+  } else if (oddsHint?.homeOdd && oddsHint?.awayOdd) {
+    for (const mkt of existingMkts) {
+      if (mkt.marketType === 'Match Winner') {
+        const nextOdd = mkt.selectionName === existingMkts[0]?.selectionName ? oddsHint.homeOdd : oddsHint.awayOdd;
+        if (nextOdd && Math.abs(nextOdd - mkt.simulatedOdds) >= 0.02) {
+          await db.update(markets).set({ simulatedOdds: nextOdd }).where(eq(markets.id, mkt.id));
+        }
+      }
+    }
+  }
+}
+
+async function getOrCreateTeam(name: string, shortName: string, sportId: number, logoOrColor?: string) {
+  const existing = await db
+    .select()
+    .from(teams)
+    .where(sql`LOWER(${teams.name}) = LOWER(${name}) AND ${teams.sportId} = ${sportId}`)
+    .limit(1);
+
+  if (existing.length > 0) {
+    if (logoOrColor && logoOrColor.startsWith('http') && !existing[0].logo.startsWith('http')) {
+      const [updated] = await db
+        .update(teams)
+        .set({ logo: logoOrColor })
+        .where(eq(teams.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+    return existing[0];
+  }
+
+  const [created] = await db
+    .insert(teams)
+    .values({
+      name,
+      shortName: shortName || makeShortName(name),
+      logo: logoOrColor || pickColor(name),
+      sportId,
+    })
+    .returning();
+  return created;
+}
+
+async function ensureCompetition(
+  slug: string,
+  name: string,
+  sportId: number,
+  country: string,
+  featured: boolean,
+  compBySlug: Map<string, typeof competitions.$inferSelect>
+) {
+  let comp = compBySlug.get(slug);
+  if (comp) return comp;
+
+  const [inserted] = await db
+    .insert(competitions)
+    .values({ slug, name, sportId, country, featured })
+    .onConflictDoNothing()
+    .returning();
+
+  if (inserted) {
+    compBySlug.set(slug, inserted);
+    return inserted;
+  }
+
+  const [refetched] = await db
+    .select()
+    .from(competitions)
+    .where(eq(competitions.slug, slug))
+    .limit(1);
+  if (refetched) compBySlug.set(slug, refetched);
+  return refetched;
+}
+
+async function ensureExpandedMarketsForOpenMatches() {
+  const openMatches = await db
+    .select()
+    .from(matches)
+    .where(ne(matches.status, 'finished'));
+
+  if (openMatches.length === 0) return;
+
+  const [sportRows, teamRows, existingMarkets] = await Promise.all([
+    db.select().from(sports),
+    db.select().from(teams),
+    db.select().from(markets).where(inArray(markets.matchId, openMatches.map((m) => m.id))),
+  ]);
+
+  const sportMap = new Map(sportRows.map((s) => [s.id, s]));
+  const teamMap = new Map(teamRows.map((t) => [t.id, t]));
+  const marketsByMatch = new Map<number, typeof existingMarkets>();
+  for (const mkt of existingMarkets) {
+    const list = marketsByMatch.get(mkt.matchId) || [];
+    list.push(mkt);
+    marketsByMatch.set(mkt.matchId, list);
+  }
+
+  for (const m of openMatches) {
+    const current = marketsByMatch.get(m.id) || [];
+    const hasTeamTotals = current.some((c) => c.marketType.startsWith('1st Team Total'));
+    if (hasTeamTotals) continue;
+
+    const sp = sportMap.get(m.sportId)?.slug || 'football';
+    const homeName = teamMap.get(m.homeTeamId)?.name || 'Home';
+    const awayName = teamMap.get(m.awayTeamId)?.name || 'Away';
+    const fullMarkets = buildSimulatedMarketsForSport(m.id, sp, homeName, awayName, m.id);
+
+    const existingKeys = new Set(current.map((c) => `${c.marketType}::${c.selectionName}`));
+    const missing = fullMarkets.filter((fm) => !existingKeys.has(`${fm.marketType}::${fm.selectionName}`));
+    if (missing.length > 0) {
+      await db.insert(markets).values(missing);
+    }
+  }
+}
+
+interface UnifiedFixture {
+  externalId: string;
+  sportSlug: string;
+  competitionSlug: string;
+  competitionName: string;
+  country: string;
+  featuredComp: boolean;
+  homeName: string;
+  awayName: string;
+  homeShort: string;
+  awayShort: string;
+  homeLogo?: string;
+  awayLogo?: string;
+  homeScore: number;
+  awayScore: number;
+  status: 'live' | 'upcoming' | 'finished';
+  matchTimer: string;
+  startTime: Date;
+  featured: boolean;
+  oddsHint?: RealOddsHint;
+}
+
+async function fetchLiveScoreFootballFixtures(): Promise<{ fixtures: UnifiedFixture[]; sources: string[] }> {
+  const fixtures: UnifiedFixture[] = [];
+  const sources: string[] = [];
+  const seenEids = new Set<string>();
+
+  const now = new Date();
+  const todayYmd = toYmd(now);
+  const tomorrowYmd = toYmd(new Date(now.getTime() + 86400_000));
+
+  const urls = [
+    { url: 'https://prod-public-api.livescore.com/v1/api/app/live/soccer/0?MD=1', isLiveFeed: true },
+    { url: `https://prod-public-api.livescore.com/v1/api/app/date/soccer/${todayYmd}/0?MD=1`, isLiveFeed: false },
+    { url: `https://prod-public-api.livescore.com/v1/api/app/date/soccer/${tomorrowYmd}/0?MD=1`, isLiveFeed: false },
+  ];
+
+  const responses = await Promise.all(
+    urls.map(async (u) => {
+      try {
+        const res = await fetch(u.url, {
+          headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 SPORTZONE/3.0' },
+          signal: AbortSignal.timeout(5500),
+        });
+        if (!res.ok) return null;
+        return { isLiveFeed: u.isLiveFeed, json: await res.json() };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  for (const r of responses) {
+    if (!r?.json?.Stages || !Array.isArray(r.json.Stages)) continue;
+    sources.push(r.isLiveFeed ? 'LiveScore Live' : 'LiveScore Schedule');
+
+    for (const stage of r.json.Stages) {
+      const compName = String(stage.Snm || 'Football League').trim();
+      const country = String(stage.Cnm || 'International').trim();
+      const compSlug = String(stage.Scd || compName.toLowerCase().replace(/[^a-z0-9]+/g, '-')).slice(0, 60);
+      const isPriorityLeague = PRIORITY_LIVESCORE_LEAGUES.has(compName.toLowerCase());
+
+      if (!r.isLiveFeed && !isPriorityLeague) {
+        // Skip minor non-live divisions from the huge 185-stage list to keep board sharp
+        const hasLiveInStage = (stage.Events || []).some(
+          (ev: any) => parseLiveScoreStatus(ev.Esid, ev.Eps, false) === 'live'
+        );
+        if (!hasLiveInStage) continue;
+      }
+
+      for (const ev of stage.Events || []) {
+        const eid = String(ev.Eid || '');
+        if (!eid || seenEids.has(eid)) continue;
+
+        const status = parseLiveScoreStatus(ev.Esid, ev.Eps, r.isLiveFeed);
+        if (status === 'skip') continue;
+
+        const t1 = ev.T1?.[0];
+        const t2 = ev.T2?.[0];
+        const homeName = String(t1?.Nm || '').trim();
+        const awayName = String(t2?.Nm || '').trim();
+        if (!homeName || !awayName) continue;
+
+        seenEids.add(eid);
+
+        const homeScore = Number.parseInt(ev.Tr1 ?? '0', 10) || 0;
+        const awayScore = Number.parseInt(ev.Tr2 ?? '0', 10) || 0;
+        const startTime = parseLiveScoreDate(ev.Esd);
+        const matchTimer =
+          status === 'finished'
+            ? 'FT'
+            : status === 'live'
+            ? String(ev.Eps || 'LIVE')
+            : 'Scheduled';
+
+        const homeLogo = t1?.Img ? `https://lsm-static-prod.livescore.com/medium/${t1.Img}` : undefined;
+        const awayLogo = t2?.Img ? `https://lsm-static-prod.livescore.com/medium/${t2.Img}` : undefined;
+
+        fixtures.push({
+          externalId: `ls_soccer_${eid}`,
+          sportSlug: 'football',
+          competitionSlug: `${country.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${compSlug}`.slice(0, 80),
+          competitionName: compName,
+          country,
+          featuredComp: isPriorityLeague,
+          homeName,
+          awayName,
+          homeShort: String(t1?.Abr || makeShortName(homeName)),
+          awayShort: String(t2?.Abr || makeShortName(awayName)),
+          homeLogo,
+          awayLogo,
+          homeScore,
+          awayScore,
+          status,
+          matchTimer,
+          startTime,
+          featured: status === 'live' || isPriorityLeague,
+        });
+      }
+    }
+  }
+
+  return { fixtures: fixtures.slice(0, 95), sources };
+}
+
+async function fetchEspnFixtures(): Promise<{ fixtures: UnifiedFixture[]; sources: string[] }> {
+  const fixtures: UnifiedFixture[] = [];
+  const sources: string[] = [];
+
+  const espnFeeds: LiveFeedSpec[] = [
+    ...PUBLIC_LIVE_FEEDS,
+    {
+      url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard',
+      sportSlug: 'football',
+      competitionSlug: 'world-football',
+      competitionName: 'World Football',
+      country: 'International',
+    },
+  ];
+
+  const results = await Promise.all(
+    espnFeeds.map(async (feed) => {
+      try {
+        const res = await fetch(feed.url, {
+          headers: { Accept: 'application/json', 'User-Agent': 'SPORTZONE-LiveSync/3.0' },
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) return null;
+        return { feed, json: await res.json() };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  for (const item of results) {
+    if (!item?.json?.events || !Array.isArray(item.json.events)) continue;
+    const { feed, json } = item;
+    sources.push(feed.competitionName);
+
+    const leagueNameFromFeed = String(json.leagues?.[0]?.name || feed.competitionName);
+    const sortedEvents = [...json.events].sort((a: any, b: any) => {
+      const aLive = a?.status?.type?.state === 'in' ? 0 : a?.status?.type?.state === 'pre' ? 1 : 2;
+      const bLive = b?.status?.type?.state === 'in' ? 0 : b?.status?.type?.state === 'pre' ? 1 : 2;
+      return aLive - bLive;
+    });
+    const events = sortedEvents.slice(0, feed.competitionSlug === 'world-football' ? 50 : 14);
+
+    for (let i = 0; i < events.length; i++) {
+      const ev = events[i];
+      const comp0 = ev?.competitions?.[0];
+      const competitors = comp0?.competitors;
+      if (!Array.isArray(competitors) || competitors.length < 2) continue;
+
+      const homeComp = competitors.find((c: any) => c.homeAway === 'home') || competitors[0];
+      const awayComp = competitors.find((c: any) => c.homeAway === 'away') || competitors[1];
+
+      const homeName = homeComp?.team?.displayName || homeComp?.athlete?.displayName || homeComp?.team?.name;
+      const awayName = awayComp?.team?.displayName || awayComp?.athlete?.displayName || awayComp?.team?.name;
+      if (!homeName || !awayName) continue;
+
+      const homeShort = homeComp?.team?.abbreviation || makeShortName(homeName);
+      const awayShort = awayComp?.team?.abbreviation || makeShortName(awayName);
+      const homeLogo = homeComp?.team?.logo || (homeComp?.team?.color ? `#${homeComp.team.color}` : undefined);
+      const awayLogo = awayComp?.team?.logo || (awayComp?.team?.color ? `#${awayComp.team.color}` : undefined);
+
+      const homeScore = Number.parseInt(homeComp?.score ?? '0', 10) || 0;
+      const awayScore = Number.parseInt(awayComp?.score ?? '0', 10) || 0;
+
+      const state = ev?.status?.type?.state;
+      let status: 'live' | 'upcoming' | 'finished' = 'upcoming';
+      if (state === 'in') status = 'live';
+      else if (state === 'post') status = 'finished';
+
+      const displayClock =
+        ev?.status?.type?.shortDetail ||
+        ev?.status?.displayClock ||
+        (status === 'finished' ? 'FT' : 'Scheduled');
+      const startTime = ev?.date ? new Date(ev.date) : new Date();
+
+      const oddRaw = Array.isArray(comp0?.odds) && comp0.odds.length > 0 ? comp0.odds[0] : null;
+      const oddsHint: RealOddsHint | undefined = oddRaw
+        ? {
+            homeOdd: americanToDecimal(oddRaw.moneyline?.home?.close?.odds ?? oddRaw.homeTeamOdds?.moneyLine),
+            drawOdd: americanToDecimal(oddRaw.moneyline?.draw?.close?.odds ?? oddRaw.drawOdds?.moneyLine),
+            awayOdd: americanToDecimal(oddRaw.moneyline?.away?.close?.odds ?? oddRaw.awayTeamOdds?.moneyLine),
+            overUnderLine: Number.isFinite(Number(oddRaw.overUnder)) ? Number(oddRaw.overUnder) : null,
+            overOdd: americanToDecimal(oddRaw.total?.over?.close?.odds ?? oddRaw.overOdds),
+            underOdd: americanToDecimal(oddRaw.total?.under?.close?.odds ?? oddRaw.underOdds),
+          }
+        : undefined;
+
+      fixtures.push({
+        externalId: `espn_${feed.competitionSlug}_${ev.id}`,
+        sportSlug: feed.sportSlug,
+        competitionSlug: feed.competitionSlug,
+        competitionName: feed.competitionSlug === 'world-football' ? leagueNameFromFeed : feed.competitionName,
+        country: feed.country,
+        featuredComp: true,
+        homeName,
+        awayName,
+        homeShort,
+        awayShort,
+        homeLogo,
+        awayLogo,
+        homeScore,
+        awayScore,
+        status,
+        matchTimer: String(displayClock).slice(0, 28),
+        startTime,
+        featured: status === 'live' || i < 2,
+        oddsHint,
+      });
+    }
+  }
+
+  return { fixtures, sources };
+}
+
+// Resolves & unsticks any DB match that remained 'live' or past-startTime 'upcoming' when feeds rolled over
+async function resolveStaleOrStuckMatches(seenExternalIds: Set<string>) {
+  const openMatches = await db.select().from(matches).where(ne(matches.status, 'finished'));
+  const now = Date.now();
+
+  for (const m of openMatches) {
+    if (m.externalId && seenExternalIds.has(m.externalId)) continue;
+
+    const ageHours = (now - new Date(m.startTime).getTime()) / 3600_000;
+    // Check ANY live match that dropped off live feed (even if newly finished), plus upcoming matches past kickoff
+    const shouldResolve =
+      m.status === 'live' ||
+      (m.status === 'upcoming' && ageHours >= 0.05);
+
+    if (!shouldResolve) continue;
+
+    let resolvedStatus: 'live' | 'upcoming' | 'finished' = m.status as any;
+    let homeScore = m.homeScore;
+    let awayScore = m.awayScore;
+    let matchTimer = m.matchTimer;
+
+    if (m.externalId?.startsWith('ls_soccer_')) {
+      const eid = m.externalId.replace('ls_soccer_', '');
+      try {
+        const res = await fetch(`https://prod-public-api.livescore.com/v1/api/app/scoreboard/soccer/${eid}?MD=1`, {
+          headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 SPORTZONE/3.0' },
+          signal: AbortSignal.timeout(3500),
+        });
+        if (res.ok) {
+          const sb = await res.json();
+          const st = parseLiveScoreStatus(sb.Esid, sb.Eps, false);
+          homeScore = Number.parseInt(sb.Tr1 ?? String(homeScore), 10) || homeScore;
+          awayScore = Number.parseInt(sb.Tr2 ?? String(awayScore), 10) || awayScore;
+          if (st === 'finished' || st === 'skip') {
+            resolvedStatus = 'finished';
+            matchTimer = String(sb.Eps || 'FT').slice(0, 28);
+          } else if (st === 'live') {
+            resolvedStatus = 'live';
+            matchTimer = String(sb.Eps || matchTimer).slice(0, 28);
+          }
+        }
+      } catch {
+        // Fallback below if aged > 3.5h
+      }
+    }
+
+    // Hard safety: never let a match remain stuck 'live' or stale 'upcoming' more than 3.5 hours past kickoff
+    if (resolvedStatus !== 'finished' && ageHours >= 3.5) {
+      resolvedStatus = 'finished';
+      matchTimer = 'FT';
+    }
+
+    if (
+      resolvedStatus !== m.status ||
+      homeScore !== m.homeScore ||
+      awayScore !== m.awayScore ||
+      matchTimer !== m.matchTimer
+    ) {
+      await db
+        .update(matches)
+        .set({
+          status: resolvedStatus,
+          homeScore,
+          awayScore,
+          matchTimer,
+          dataSource: 'live_api',
+        })
+        .where(eq(matches.id, m.id));
+
+      if (m.status !== 'finished' && resolvedStatus === 'finished') {
+        await settleBetsForFinishedMatch(m.id);
+      }
+    }
+  }
+}
+
+let lastSyncTimestamp = 0;
+let activeSyncPromise: Promise<{ synced: number; updated: number; sources: string[] }> | null = null;
+
+export async function syncIfStale(): Promise<void> {
+  if (Date.now() - lastSyncTimestamp > 10_000) {
+    await syncLiveSportsFeeds();
+  }
+}
+
+export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: number; sources: string[] }> {
+  if (activeSyncPromise) return activeSyncPromise;
+
+  activeSyncPromise = (async () => {
+    lastSyncTimestamp = Date.now();
+    let synced = 0;
+    let updated = 0;
+    const activeSources: string[] = [];
+    const seenExternalIds = new Set<string>();
+
+    try {
+      const [sportRows, compRows, teamRows, existingMatchRows] = await Promise.all([
+        db.select().from(sports),
+        db.select().from(competitions),
+        db.select().from(teams),
+        db.select().from(matches),
+      ]);
+
+      const sportBySlug = new Map(sportRows.map((s) => [s.slug, s]));
+      const compBySlug = new Map(compRows.map((c) => [c.slug, c]));
+      const teamById = new Map(teamRows.map((t) => [t.id, t]));
+
+      // Map existing matches by externalId AND by normalized (sportId + home + away + dateDay) to prevent duplicates
+      const existingByExtId = new Map<string, typeof matches.$inferSelect>();
+      const existingByPairKey = new Map<string, typeof matches.$inferSelect>();
+      for (const em of existingMatchRows) {
+        if (em.externalId) existingByExtId.set(em.externalId, em);
+        const ht = teamById.get(em.homeTeamId);
+        const at = teamById.get(em.awayTeamId);
+        if (ht && at) {
+          const day = toYmd(new Date(em.startTime));
+          existingByPairKey.set(
+            `${em.sportId}:${normalizeTeamKey(ht.name)}:${normalizeTeamKey(at.name)}:${day}`,
+            em
+          );
+        }
+      }
+
+      const [espnRes, lsRes] = await Promise.all([fetchEspnFixtures(), fetchLiveScoreFootballFixtures()]);
+      activeSources.push(...espnRes.sources, ...lsRes.sources);
+
+      // Prefer ESPN first (carries real DraftKings odds + HD team crests), then enrich/fill remaining with LiveScore
+      const allFixtures: UnifiedFixture[] = [...espnRes.fixtures, ...lsRes.fixtures];
+      const batchPairDedupe = new Set<string>();
+
+      for (const fx of allFixtures) {
+        const sport = sportBySlug.get(fx.sportSlug);
+        if (!sport) continue;
+
+        const day = toYmd(fx.startTime);
+        const pairKey = `${sport.id}:${normalizeTeamKey(fx.homeName)}:${normalizeTeamKey(fx.awayName)}:${day}`;
+        if (batchPairDedupe.has(pairKey)) continue;
+        batchPairDedupe.add(pairKey);
+
+        seenExternalIds.add(fx.externalId);
+
+        const comp = await ensureCompetition(
+          fx.competitionSlug,
+          fx.competitionName,
+          sport.id,
+          fx.country,
+          fx.featuredComp,
+          compBySlug
+        );
+        if (!comp) continue;
+
+        const matchedRow = existingByExtId.get(fx.externalId) || existingByPairKey.get(pairKey);
+
+        if (matchedRow) {
+          seenExternalIds.add(matchedRow.externalId || '');
+          const prevStatus = matchedRow.status;
+
+          await db
+            .update(matches)
+            .set({
+              homeScore: fx.homeScore,
+              awayScore: fx.awayScore,
+              status: fx.status,
+              matchTimer: fx.matchTimer,
+              startTime: fx.startTime,
+              dataSource: 'live_api',
+              featured: fx.featured || matchedRow.featured,
+            })
+            .where(eq(matches.id, matchedRow.id));
+
+          if (prevStatus !== 'finished' && fx.status === 'finished') {
+            await settleBetsForFinishedMatch(matchedRow.id);
+          } else if (fx.status === 'live') {
+            await updateDynamicLiveOdds(
+              matchedRow.id,
+              fx.sportSlug,
+              fx.homeScore,
+              fx.awayScore,
+              fx.matchTimer,
+              fx.oddsHint
+            );
+          }
+          updated++;
+        } else {
+          // Do not insert old already-finished fixtures from the distant past if DB didn't have them
+          if (fx.status === 'finished' && Date.now() - fx.startTime.getTime() > 14 * 3600_000) {
+            continue;
+          }
+
+          const homeTeam = await getOrCreateTeam(fx.homeName, fx.homeShort, sport.id, fx.homeLogo);
+          const awayTeam = await getOrCreateTeam(fx.awayName, fx.awayShort, sport.id, fx.awayLogo);
+
+          const [createdMatch] = await db
+            .insert(matches)
+            .values({
+              externalId: fx.externalId,
+              sportId: sport.id,
+              competitionId: comp.id,
+              homeTeamId: homeTeam.id,
+              awayTeamId: awayTeam.id,
+              homeScore: fx.homeScore,
+              awayScore: fx.awayScore,
+              status: fx.status,
+              matchTimer: fx.matchTimer,
+              startTime: fx.startTime,
+              dataSource: 'live_api',
+              featured: fx.featured,
+            })
+            .returning();
+
+          const marketRows = buildSimulatedMarketsForSport(
+            createdMatch.id,
+            fx.sportSlug,
+            fx.homeName,
+            fx.awayName,
+            createdMatch.id,
+            fx.oddsHint
+          );
+          await db.insert(markets).values(marketRows);
+
+          if (fx.status === 'live') {
+            await updateDynamicLiveOdds(
+              createdMatch.id,
+              fx.sportSlug,
+              fx.homeScore,
+              fx.awayScore,
+              fx.matchTimer,
+              fx.oddsHint
+            );
+          }
+          synced++;
+        }
+      }
+
+      await resolveStaleOrStuckMatches(seenExternalIds);
+      await ensureExpandedMarketsForOpenMatches();
+      if (synced > 0 || updated > 0) {
+        realtimeHub.emitMatchesUpdated({ synced, updated });
+      }
+    } catch (error) {
+      console.warn('Live sports sync encountered a non-fatal error:', error);
+    } finally {
+      activeSyncPromise = null;
+    }
+
+    return { synced, updated, sources: Array.from(new Set(activeSources)) };
+  })();
+
+  return activeSyncPromise;
+}
+
+let seedPromise: Promise<void> | null = null;
+
+export async function ensureDatabaseSeeded(): Promise<void> {
+  if (seedPromise) return seedPromise;
+
+  seedPromise = (async () => {
+    try {
+      const existingSports = await db.select().from(sports);
+      if (existingSports.length === 0) {
+        await db
+          .insert(sports)
+          .values([
+            { slug: 'football', name: 'Football', icon: 'trophy' },
+            { slug: 'basketball', name: 'Basketball', icon: 'circle-dot' },
+            { slug: 'tennis', name: 'Tennis', icon: 'disc' },
+            { slug: 'volleyball', name: 'Volleyball', icon: 'globe' },
+            { slug: 'esports', name: 'Esports', icon: 'gamepad-2' },
+          ])
+          .onConflictDoNothing();
+      }
+
+      const targetAdminEmail = 'ppatrice191@gmail.com';
+      const existingAdmin = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, targetAdminEmail))
+        .limit(1);
+
+      const adminPasswordHash = await bcrypt.hash('azerty1233216', 10);
+      if (existingAdmin.length === 0) {
+        const [createdAdmin] = await db
+          .insert(users)
+          .values({
+            uid: 'admin_ppatrice191',
+            username: 'PatriceAdmin',
+            email: targetAdminEmail,
+            passwordHash: adminPasswordHash,
+            virtualBalance: 0,
+            role: 'admin',
+            favoriteSports: '["football","basketball"]',
+            favoriteTeams: '[]',
+          })
+          .returning();
+
+        await db.insert(auditLogs).values({
+          adminId: createdAdmin.id,
+          action: 'ADMIN_PROVISIONED',
+          details: 'Provisioned administrator account ppatrice191@gmail.com',
+        });
+      } else if (existingAdmin[0].role !== 'admin') {
+        await db
+          .update(users)
+          .set({ role: 'admin', passwordHash: adminPasswordHash })
+          .where(eq(users.id, existingAdmin[0].id));
+      }
+
+      const legacyMatches = await db
+        .select({ id: matches.id })
+        .from(matches)
+        .where(like(matches.externalId, 'sim_seed_%'));
+
+      if (legacyMatches.length > 0) {
+        for (const lm of legacyMatches) {
+          await db.delete(virtualBetSelections).where(eq(virtualBetSelections.matchId, lm.id));
+          await db.delete(matches).where(eq(matches.id, lm.id));
+        }
+      }
+
+      await syncLiveSportsFeeds();
+    } catch (error) {
+      console.error('Error initializing SPORTZONE database:', error);
+      seedPromise = null;
+    }
+  })();
+
+  return seedPromise;
+}

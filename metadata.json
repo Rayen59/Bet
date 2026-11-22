@@ -1,0 +1,6 @@
+{
+  "name": "SPORTZONE",
+  "description": "Premium virtual sports betting simulation platform with live match tracking, simulated odds markets, interactive betting slip, and analytics dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
