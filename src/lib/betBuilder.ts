@@ -1,4 +1,4 @@
-import { SlipSelection } from '../types/sportzone';
+import type { SlipSelection } from '../types/sportzone.ts';
 
 export interface MarketLike {
   id?: number;
