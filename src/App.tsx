@@ -713,17 +713,19 @@ export default function App() {
       </div>
 
       {/* Mobile Floating Betslip Pill */}
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed bottom-18 right-4 z-40 flex items-center gap-2 rounded-full bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2.5 shadow-xl text-xs"
-      >
-        <Receipt className="w-4 h-4" />
-        <span>Betslip ({selections.length})</span>
-        {combinedOdds > 0 && (
-          <span className="font-mono-tabular font-extrabold">· {combinedOdds.toFixed(2)}</span>
-        )}
-      </button>
+      {route !== 'login' && route !== 'register' && route !== 'reset-password' && route !== 'admin' && (
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          className="lg:hidden fixed bottom-18 right-4 z-40 flex items-center gap-2 rounded-full bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2.5 shadow-xl text-xs"
+        >
+          <Receipt className="w-4 h-4" />
+          <span>Betslip ({selections.length})</span>
+          {combinedOdds > 0 && (
+            <span className="font-mono-tabular font-extrabold">· {combinedOdds.toFixed(2)}</span>
+          )}
+        </button>
+      )}
 
       {/* Mobile Betting Slip Drawer */}
       {mobileOpen && (

@@ -77,12 +77,15 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
     } catch (err: any) {
       const code = String(err?.code || '');
       const rawMsg = String(err?.message || '');
-      const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
 
       if (code === 'auth/unauthorized-domain' || rawMsg.includes('auth/unauthorized-domain')) {
-        const friendly = `Google Sign-In is not yet authorized on "${host}". Use Email & Password below (works immediately), or add "${host}" to Firebase Console → Authentication → Settings → Authorized domains.`;
+        const friendly =
+          'Google Sign-In is only enabled on the primary app domain. Please use Email & Password below (works on all domains).';
         setAuthNotice(friendly);
-        showToast('Use Email & Password below or authorize this domain in Firebase.', 'error');
+        showToast('Please sign in or register with Email & Password below.', 'info');
+        if (typeof document !== 'undefined') {
+          document.getElementById('auth-email')?.focus();
+        }
       } else if (code === 'auth/popup-closed-by-user') {
         setAuthNotice('Google sign-in popup was closed. You can try again or use Email & Password below.');
         showToast('Google sign-in cancelled.', 'info');
