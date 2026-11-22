@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { adminAuth } from '../lib/firebase-admin.ts';
 import { db } from '../db/index.ts';
 import { users } from '../db/schema.ts';
@@ -62,27 +62,38 @@ export function serializeUser(row: typeof users.$inferSelect): AuthenticatedUser
 
 export async function getOrCreateFirebaseUser(uid: string, email: string, displayName?: string) {
   try {
-    const cleanEmail = email.toLowerCase();
-    const existing = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
-    if (existing.length > 0) {
-      return serializeUser(existing[0]);
-    }
+    const cleanEmail = email.trim().toLowerCase();
 
-    const existingByEmail = await db.select().from(users).where(eq(users.email, cleanEmail)).limit(1);
-    if (existingByEmail.length > 0) {
-      const [updated] = await db
-        .update(users)
-        .set({ uid })
-        .where(eq(users.id, existingByEmail[0].id))
-        .returning();
-      return serializeUser(updated);
+    const findByUidOrEmail = async () => {
+      const byUid = await db.select().from(users).where(eq(users.uid, uid)).limit(1);
+      if (byUid.length > 0) return byUid[0];
+
+      const byEmail = await db
+        .select()
+        .from(users)
+        .where(sql`LOWER(${users.email}) = ${cleanEmail}`)
+        .limit(1);
+      if (byEmail.length > 0) {
+        const [updated] = await db
+          .update(users)
+          .set({ uid, email: cleanEmail })
+          .where(eq(users.id, byEmail[0].id))
+          .returning();
+        return updated || byEmail[0];
+      }
+      return null;
+    };
+
+    const existing = await findByUidOrEmail();
+    if (existing) {
+      return serializeUser(existing);
     }
 
     const defaultRole = OWNER_ADMIN_EMAILS.has(cleanEmail) ? 'admin' : 'user';
     const baseUsername =
       displayName?.trim() || cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9_]/g, '') || 'Player';
 
-    const [inserted] = await db
+    const insertedRows = await db
       .insert(users)
       .values({
         uid,
@@ -93,13 +104,20 @@ export async function getOrCreateFirebaseUser(uid: string, email: string, displa
         favoriteTeams: '[]',
         favoriteSports: '["football","basketball"]',
       })
-      .onConflictDoUpdate({
-        target: users.uid,
-        set: { email: cleanEmail },
-      })
+      .onConflictDoNothing()
       .returning();
 
-    return serializeUser(inserted);
+    if (insertedRows.length > 0) {
+      return serializeUser(insertedRows[0]);
+    }
+
+    // Concurrent request created the user on uid or email just before our insert
+    const resolved = await findByUidOrEmail();
+    if (resolved) {
+      return serializeUser(resolved);
+    }
+
+    throw new Error('User record could not be resolved after conflict.');
   } catch (error) {
     console.error('Database query failed in getOrCreateFirebaseUser:', error);
     throw new Error('Failed to synchronize user profile.', { cause: error });
