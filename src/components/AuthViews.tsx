@@ -20,10 +20,12 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const [resetStep, setResetStep] = useState<'request' | 'confirm'>('request');
   const [submitting, setSubmitting] = useState(false);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setAuthNotice(null);
     try {
       if (mode === 'login') {
         await loginWithEmail(email, password);
@@ -57,7 +59,9 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
         }
       }
     } catch (err: any) {
-      showToast(err?.message || 'Authentication failed.', 'error');
+      const msg = err?.message || 'Authentication failed.';
+      setAuthNotice(msg);
+      showToast(msg, 'error');
     } finally {
       setSubmitting(false);
     }
@@ -65,12 +69,32 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
 
   const handleGoogleSignIn = async () => {
     setSubmitting(true);
+    setAuthNotice(null);
     try {
       await loginWithGoogle();
       showToast('Signed in with Google.', 'success');
       onNavigate('home');
     } catch (err: any) {
-      showToast(err?.message || 'Google sign-in failed or was cancelled.', 'error');
+      const code = String(err?.code || '');
+      const rawMsg = String(err?.message || '');
+      const host = typeof window !== 'undefined' ? window.location.hostname : 'this domain';
+
+      if (code === 'auth/unauthorized-domain' || rawMsg.includes('auth/unauthorized-domain')) {
+        const friendly = `Google Sign-In is not yet authorized on "${host}". Use Email & Password below (works immediately), or add "${host}" to Firebase Console → Authentication → Settings → Authorized domains.`;
+        setAuthNotice(friendly);
+        showToast('Use Email & Password below or authorize this domain in Firebase.', 'error');
+      } else if (code === 'auth/popup-closed-by-user') {
+        setAuthNotice('Google sign-in popup was closed. You can try again or use Email & Password below.');
+        showToast('Google sign-in cancelled.', 'info');
+      } else if (code === 'auth/popup-blocked') {
+        const friendly = 'Browser blocked the Google sign-in popup. Allow popups or sign in with Email & Password below.';
+        setAuthNotice(friendly);
+        showToast(friendly, 'error');
+      } else {
+        const friendly = rawMsg || 'Google sign-in failed or was cancelled.';
+        setAuthNotice(friendly);
+        showToast(friendly, 'error');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -95,6 +119,12 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
               : 'Access your DT balance, live tickets, and real-time match center.'}
           </p>
         </div>
+
+        {authNotice && (
+          <div className="rounded-lg border border-rose-500/40 bg-rose-950/40 px-3.5 py-2.5 text-xs text-rose-200 leading-relaxed">
+            {authNotice}
+          </div>
+        )}
 
         {mode !== 'reset-password' && (
           <>

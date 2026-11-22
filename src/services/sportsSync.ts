@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { eq, inArray, like, ne, sql } from 'drizzle-orm';
-import { db } from '../db/index.ts';
+import { assertDatabaseConfigured, db } from '../db/index.ts';
 import {
   auditLogs,
   competitions,
@@ -449,9 +449,11 @@ async function updateDynamicLiveOdds(
   homeScore: number,
   awayScore: number,
   matchTimer: string,
-  oddsHint?: RealOddsHint
+  oddsHint?: RealOddsHint,
+  preloadedMarkets?: Array<typeof markets.$inferSelect>
 ) {
-  const existingMkts = await db.select().from(markets).where(eq(markets.matchId, matchId));
+  const existingMkts =
+    preloadedMarkets ?? (await db.select().from(markets).where(eq(markets.matchId, matchId)));
   if (existingMkts.length === 0) return;
 
   if (sportSlug === 'football') {
@@ -465,7 +467,6 @@ async function updateDynamicLiveOdds(
     let a2 = oddsHint?.awayOdd ?? null;
 
     if (!h1 || !dx || !a2) {
-      // Realistic Poisson-inspired live probability shift from score + remaining time
       let pH = 0.38;
       let pD = 0.28;
       let pA = 0.34;
@@ -491,6 +492,7 @@ async function updateDynamicLiveOdds(
     const dc12 = clampOdd(0.94 / (0.94 / h1 + 0.94 / a2));
     const dcx2 = clampOdd(0.94 / (0.94 / dx + 0.94 / a2));
 
+    const pendingUpdates: Promise<unknown>[] = [];
     for (const mkt of existingMkts) {
       let nextOdd = mkt.simulatedOdds;
       let nextActive = true;
@@ -507,7 +509,6 @@ async function updateDynamicLiveOdds(
         const numMatch = mkt.selectionName.match(/([\d.]+)/);
         const line = numMatch ? Number(numMatch[1]) : 2.5;
         if (totalGoals > line) {
-          // Already over threshold — suspend already-decided Total lines
           nextActive = false;
         } else {
           const needed = Math.ceil(line - totalGoals);
@@ -539,41 +540,56 @@ async function updateDynamicLiveOdds(
       }
 
       if (Math.abs(nextOdd - mkt.simulatedOdds) >= 0.02 || nextActive !== mkt.active) {
-        await db
-          .update(markets)
-          .set({ simulatedOdds: nextOdd, active: nextActive })
-          .where(eq(markets.id, mkt.id));
+        pendingUpdates.push(
+          db
+            .update(markets)
+            .set({ simulatedOdds: nextOdd, active: nextActive })
+            .where(eq(markets.id, mkt.id))
+        );
       }
     }
+    if (pendingUpdates.length > 0) {
+      await Promise.all(pendingUpdates);
+    }
   } else if (oddsHint?.homeOdd && oddsHint?.awayOdd) {
+    const pendingUpdates: Promise<unknown>[] = [];
     for (const mkt of existingMkts) {
       if (mkt.marketType === 'Match Winner') {
         const nextOdd = mkt.selectionName === existingMkts[0]?.selectionName ? oddsHint.homeOdd : oddsHint.awayOdd;
         if (nextOdd && Math.abs(nextOdd - mkt.simulatedOdds) >= 0.02) {
-          await db.update(markets).set({ simulatedOdds: nextOdd }).where(eq(markets.id, mkt.id));
+          pendingUpdates.push(
+            db.update(markets).set({ simulatedOdds: nextOdd }).where(eq(markets.id, mkt.id))
+          );
         }
       }
+    }
+    if (pendingUpdates.length > 0) {
+      await Promise.all(pendingUpdates);
     }
   }
 }
 
-async function getOrCreateTeam(name: string, shortName: string, sportId: number, logoOrColor?: string) {
-  const existing = await db
-    .select()
-    .from(teams)
-    .where(sql`LOWER(${teams.name}) = LOWER(${name}) AND ${teams.sportId} = ${sportId}`)
-    .limit(1);
+async function getOrCreateTeam(
+  name: string,
+  shortName: string,
+  sportId: number,
+  teamCache: Map<string, typeof teams.$inferSelect>,
+  logoOrColor?: string
+) {
+  const cacheKey = `${sportId}:${name.trim().toLowerCase()}`;
+  const cached = teamCache.get(cacheKey);
 
-  if (existing.length > 0) {
-    if (logoOrColor && logoOrColor.startsWith('http') && !existing[0].logo.startsWith('http')) {
+  if (cached) {
+    if (logoOrColor && logoOrColor.startsWith('http') && !cached.logo.startsWith('http')) {
       const [updated] = await db
         .update(teams)
         .set({ logo: logoOrColor })
-        .where(eq(teams.id, existing[0].id))
+        .where(eq(teams.id, cached.id))
         .returning();
+      teamCache.set(cacheKey, updated);
       return updated;
     }
-    return existing[0];
+    return cached;
   }
 
   const [created] = await db
@@ -585,6 +601,7 @@ async function getOrCreateTeam(name: string, shortName: string, sportId: number,
       sportId,
     })
     .returning();
+  teamCache.set(cacheKey, created);
   return created;
 }
 
@@ -697,12 +714,13 @@ async function fetchLiveScoreFootballFixtures(): Promise<{ fixtures: UnifiedFixt
     { url: `https://prod-public-api.livescore.com/v1/api/app/date/soccer/${tomorrowYmd}/0?MD=1`, isLiveFeed: false },
   ];
 
+  const fetchTimeout = process.env.VERCEL === '1' ? 3200 : 5500;
   const responses = await Promise.all(
     urls.map(async (u) => {
       try {
         const res = await fetch(u.url, {
           headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 SPORTZONE/3.0' },
-          signal: AbortSignal.timeout(5500),
+          signal: AbortSignal.timeout(fetchTimeout),
         });
         if (!res.ok) return null;
         return { isLiveFeed: u.isLiveFeed, json: await res.json() };
@@ -810,12 +828,13 @@ async function fetchEspnFixtures(): Promise<{ fixtures: UnifiedFixture[]; source
     },
   ];
 
+  const fetchTimeout = process.env.VERCEL === '1' ? 3200 : 5000;
   const results = await Promise.all(
     espnFeeds.map(async (feed) => {
       try {
         const res = await fetch(feed.url, {
           headers: { Accept: 'application/json', 'User-Agent': 'SPORTZONE-LiveSync/3.0' },
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(fetchTimeout),
         });
         if (!res.ok) return null;
         return { feed, json: await res.json() };
@@ -910,52 +929,67 @@ async function fetchEspnFixtures(): Promise<{ fixtures: UnifiedFixture[]; source
 }
 
 // Resolves & unsticks any DB match that remained 'live' or past-startTime 'upcoming' when feeds rolled over
-async function resolveStaleOrStuckMatches(seenExternalIds: Set<string>) {
+async function resolveStaleOrStuckMatches(seenExternalIds: Set<string>, skipRemoteLookups = false) {
   const openMatches = await db.select().from(matches).where(ne(matches.status, 'finished'));
   const now = Date.now();
 
-  for (const m of openMatches) {
-    if (m.externalId && seenExternalIds.has(m.externalId)) continue;
-
+  const candidates = openMatches.filter((m) => {
+    if (m.externalId && seenExternalIds.has(m.externalId)) return false;
     const ageHours = (now - new Date(m.startTime).getTime()) / 3600_000;
-    // Check ANY live match that dropped off live feed (even if newly finished), plus upcoming matches past kickoff
-    const shouldResolve =
-      m.status === 'live' ||
-      (m.status === 'upcoming' && ageHours >= 0.05);
+    return m.status === 'live' || (m.status === 'upcoming' && ageHours >= 0.05);
+  });
 
-    if (!shouldResolve) continue;
+  if (candidates.length === 0) return;
 
+  // Fetch up to 6 LiveScore scoreboards in parallel to keep execution snappy
+  const lookupTargets = skipRemoteLookups
+    ? []
+    : candidates.filter((m) => m.externalId?.startsWith('ls_soccer_')).slice(0, 6);
+
+  const lookupMap = new Map<number, any>();
+  if (lookupTargets.length > 0) {
+    await Promise.all(
+      lookupTargets.map(async (m) => {
+        const eid = m.externalId!.replace('ls_soccer_', '');
+        try {
+          const res = await fetch(
+            `https://prod-public-api.livescore.com/v1/api/app/scoreboard/soccer/${eid}?MD=1`,
+            {
+              headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 SPORTZONE/3.0' },
+              signal: AbortSignal.timeout(2500),
+            }
+          );
+          if (res.ok) {
+            lookupMap.set(m.id, await res.json());
+          }
+        } catch {
+          // Ignore individual timeout
+        }
+      })
+    );
+  }
+
+  for (const m of candidates) {
+    const ageHours = (now - new Date(m.startTime).getTime()) / 3600_000;
     let resolvedStatus: 'live' | 'upcoming' | 'finished' = m.status as any;
     let homeScore = m.homeScore;
     let awayScore = m.awayScore;
     let matchTimer = m.matchTimer;
 
-    if (m.externalId?.startsWith('ls_soccer_')) {
-      const eid = m.externalId.replace('ls_soccer_', '');
-      try {
-        const res = await fetch(`https://prod-public-api.livescore.com/v1/api/app/scoreboard/soccer/${eid}?MD=1`, {
-          headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 SPORTZONE/3.0' },
-          signal: AbortSignal.timeout(3500),
-        });
-        if (res.ok) {
-          const sb = await res.json();
-          const st = parseLiveScoreStatus(sb.Esid, sb.Eps, false);
-          homeScore = Number.parseInt(sb.Tr1 ?? String(homeScore), 10) || homeScore;
-          awayScore = Number.parseInt(sb.Tr2 ?? String(awayScore), 10) || awayScore;
-          if (st === 'finished' || st === 'skip') {
-            resolvedStatus = 'finished';
-            matchTimer = String(sb.Eps || 'FT').slice(0, 28);
-          } else if (st === 'live') {
-            resolvedStatus = 'live';
-            matchTimer = String(sb.Eps || matchTimer).slice(0, 28);
-          }
-        }
-      } catch {
-        // Fallback below if aged > 3.5h
+    const sb = lookupMap.get(m.id);
+    if (sb) {
+      const st = parseLiveScoreStatus(sb.Esid, sb.Eps, false);
+      homeScore = Number.parseInt(sb.Tr1 ?? String(homeScore), 10) || homeScore;
+      awayScore = Number.parseInt(sb.Tr2 ?? String(awayScore), 10) || awayScore;
+      if (st === 'finished' || st === 'skip') {
+        resolvedStatus = 'finished';
+        matchTimer = String(sb.Eps || 'FT').slice(0, 28);
+      } else if (st === 'live') {
+        resolvedStatus = 'live';
+        matchTimer = String(sb.Eps || matchTimer).slice(0, 28);
       }
     }
 
-    // Hard safety: never let a match remain stuck 'live' or stale 'upcoming' more than 3.5 hours past kickoff
     if (resolvedStatus !== 'finished' && ageHours >= 3.5) {
       resolvedStatus = 'finished';
       matchTimer = 'FT';
@@ -989,7 +1023,8 @@ let lastSyncTimestamp = 0;
 let activeSyncPromise: Promise<{ synced: number; updated: number; sources: string[] }> | null = null;
 
 export async function syncIfStale(): Promise<void> {
-  if (Date.now() - lastSyncTimestamp > 8_000) {
+  const cooldownMs = process.env.VERCEL === '1' ? 20_000 : 8_000;
+  if (Date.now() - lastSyncTimestamp > cooldownMs) {
     await syncLiveSportsFeeds();
   }
 }
@@ -998,13 +1033,18 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
   if (activeSyncPromise) return activeSyncPromise;
 
   activeSyncPromise = (async () => {
-    lastSyncTimestamp = Date.now();
+    const syncStart = Date.now();
+    const isVercel = process.env.VERCEL === '1';
+    const deadlineMs = isVercel ? 5_200 : 25_000;
+    lastSyncTimestamp = syncStart;
+
     let synced = 0;
     let updated = 0;
     const activeSources: string[] = [];
     const seenExternalIds = new Set<string>();
 
     try {
+      assertDatabaseConfigured();
       const [sportRows, compRows, teamRows, existingMatchRows] = await Promise.all([
         db.select().from(sports),
         db.select().from(competitions),
@@ -1015,12 +1055,17 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
       const sportBySlug = new Map(sportRows.map((s) => [s.slug, s]));
       const compBySlug = new Map(compRows.map((c) => [c.slug, c]));
       const teamById = new Map(teamRows.map((t) => [t.id, t]));
+      const teamCache = new Map<string, typeof teams.$inferSelect>(
+        teamRows.map((t) => [`${t.sportId}:${t.name.trim().toLowerCase()}`, t])
+      );
 
-      // Map existing matches by externalId AND by normalized (sportId + home + away + dateDay) to prevent duplicates
       const existingByExtId = new Map<string, typeof matches.$inferSelect>();
       const existingByPairKey = new Map<string, typeof matches.$inferSelect>();
+      const liveMatchIds: number[] = [];
+
       for (const em of existingMatchRows) {
         if (em.externalId) existingByExtId.set(em.externalId, em);
+        if (em.status === 'live') liveMatchIds.push(em.id);
         const ht = teamById.get(em.homeTeamId);
         const at = teamById.get(em.awayTeamId);
         if (ht && at) {
@@ -1035,30 +1080,53 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
       const [espnRes, lsRes] = await Promise.all([fetchEspnFixtures(), fetchLiveScoreFootballFixtures()]);
       activeSources.push(...espnRes.sources, ...lsRes.sources);
 
-      // Prefer ESPN first (carries real DraftKings odds + HD team crests), then enrich/fill remaining with LiveScore
-      const allFixtures: UnifiedFixture[] = [...espnRes.fixtures, ...lsRes.fixtures];
+      // Deduplicate preferring ESPN first (carries real DraftKings odds + HD team crests)
+      const rawCombined: UnifiedFixture[] = [...espnRes.fixtures, ...lsRes.fixtures];
       const batchPairDedupe = new Set<string>();
+      const dedupedFixtures: Array<{ fx: UnifiedFixture; sport: typeof sportRows[number]; pairKey: string }> = [];
 
-      for (const fx of allFixtures) {
+      for (const fx of rawCombined) {
         const sport = sportBySlug.get(fx.sportSlug);
         if (!sport) continue;
-
         const day = toYmd(fx.startTime);
         const pairKey = `${sport.id}:${normalizeTeamKey(fx.homeName)}:${normalizeTeamKey(fx.awayName)}:${day}`;
         if (batchPairDedupe.has(pairKey)) continue;
         batchPairDedupe.add(pairKey);
+        dedupedFixtures.push({ fx, sport, pairKey });
+      }
 
+      // Prioritize existing match updates, live matches, Tunisia & Germany, then featured leagues
+      dedupedFixtures.sort((a, b) => {
+        const aExisting = existingByExtId.has(a.fx.externalId) || existingByPairKey.has(a.pairKey) ? 1 : 0;
+        const bExisting = existingByExtId.has(b.fx.externalId) || existingByPairKey.has(b.pairKey) ? 1 : 0;
+        if (aExisting !== bExisting) return bExisting - aExisting;
+        const aLive = a.fx.status === 'live' ? 1 : 0;
+        const bLive = b.fx.status === 'live' ? 1 : 0;
+        if (aLive !== bLive) return bLive - aLive;
+        const aLocal = isTunisiaOrGermanyStage(a.fx.country, a.fx.competitionName) ? 1 : 0;
+        const bLocal = isTunisiaOrGermanyStage(b.fx.country, b.fx.competitionName) ? 1 : 0;
+        if (aLocal !== bLocal) return bLocal - aLocal;
+        if (a.fx.featured !== b.fx.featured) return a.fx.featured ? -1 : 1;
+        return a.fx.startTime.getTime() - b.fx.startTime.getTime();
+      });
+
+      // Preload all live match markets in 1 query so dynamic live odds updates don't do N selects
+      const liveMarketsRows =
+        liveMatchIds.length > 0
+          ? await db.select().from(markets).where(inArray(markets.matchId, liveMatchIds))
+          : [];
+      const liveMarketsByMatch = new Map<number, typeof liveMarketsRows>();
+      for (const mk of liveMarketsRows) {
+        const list = liveMarketsByMatch.get(mk.matchId) || [];
+        list.push(mk);
+        liveMarketsByMatch.set(mk.matchId, list);
+      }
+
+      const pendingMarketInserts: Array<typeof markets.$inferInsert> = [];
+      const coldInsertCap = isVercel && existingMatchRows.length === 0 ? 55 : 220;
+
+      for (const { fx, sport, pairKey } of dedupedFixtures) {
         seenExternalIds.add(fx.externalId);
-
-        const comp = await ensureCompetition(
-          fx.competitionSlug,
-          fx.competitionName,
-          sport.id,
-          fx.country,
-          fx.featuredComp,
-          compBySlug
-        );
-        if (!comp) continue;
 
         const matchedRow = existingByExtId.get(fx.externalId) || existingByPairKey.get(pairKey);
 
@@ -1090,24 +1158,37 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
 
           if (prevStatus !== 'finished' && fx.status === 'finished') {
             await settleBetsForFinishedMatch(matchedRow.id);
-          } else if (fx.status === 'live') {
+          } else if (fx.status === 'live' && (hasChanges || Date.now() - syncStart < deadlineMs)) {
             await updateDynamicLiveOdds(
               matchedRow.id,
               fx.sportSlug,
               fx.homeScore,
               fx.awayScore,
               fx.matchTimer,
-              fx.oddsHint
+              fx.oddsHint,
+              liveMarketsByMatch.get(matchedRow.id)
             );
           }
         } else {
-          // Do not insert old already-finished fixtures from the distant past if DB didn't have them
           if (fx.status === 'finished' && Date.now() - fx.startTime.getTime() > 14 * 3600_000) {
             continue;
           }
+          if (synced >= coldInsertCap || Date.now() - syncStart > deadlineMs) {
+            continue;
+          }
 
-          const homeTeam = await getOrCreateTeam(fx.homeName, fx.homeShort, sport.id, fx.homeLogo);
-          const awayTeam = await getOrCreateTeam(fx.awayName, fx.awayShort, sport.id, fx.awayLogo);
+          const comp = await ensureCompetition(
+            fx.competitionSlug,
+            fx.competitionName,
+            sport.id,
+            fx.country,
+            fx.featuredComp,
+            compBySlug
+          );
+          if (!comp) continue;
+
+          const homeTeam = await getOrCreateTeam(fx.homeName, fx.homeShort, sport.id, teamCache, fx.homeLogo);
+          const awayTeam = await getOrCreateTeam(fx.awayName, fx.awayShort, sport.id, teamCache, fx.awayLogo);
 
           const [createdMatch] = await db
             .insert(matches)
@@ -1125,7 +1206,10 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
               dataSource: 'live_api',
               featured: fx.featured,
             })
+            .onConflictDoNothing()
             .returning();
+
+          if (!createdMatch) continue;
 
           const marketRows = buildSimulatedMarketsForSport(
             createdMatch.id,
@@ -1135,24 +1219,24 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
             createdMatch.id,
             fx.oddsHint
           );
-          await db.insert(markets).values(marketRows);
-
-          if (fx.status === 'live') {
-            await updateDynamicLiveOdds(
-              createdMatch.id,
-              fx.sportSlug,
-              fx.homeScore,
-              fx.awayScore,
-              fx.matchTimer,
-              fx.oddsHint
-            );
-          }
+          pendingMarketInserts.push(...marketRows);
           synced++;
         }
       }
 
-      await resolveStaleOrStuckMatches(seenExternalIds);
-      await ensureExpandedMarketsForOpenMatches();
+      // Batch-insert markets in chunks of 400 rows to minimize Postgres round-trips
+      for (let i = 0; i < pendingMarketInserts.length; i += 400) {
+        const chunk = pendingMarketInserts.slice(i, i + 400);
+        await db.insert(markets).values(chunk);
+      }
+
+      if (existingMatchRows.length > 0) {
+        await resolveStaleOrStuckMatches(seenExternalIds, Date.now() - syncStart > deadlineMs);
+        if (Date.now() - syncStart < deadlineMs) {
+          await ensureExpandedMarketsForOpenMatches();
+        }
+      }
+
       if (synced > 0 || updated > 0) {
         realtimeHub.emitMatchesUpdated({ synced, updated });
       }
@@ -1280,14 +1364,19 @@ async function ensureSchemaTables(): Promise<void> {
   `);
 }
 
+let coreSeeded = false;
+let coreSeedPromise: Promise<void> | null = null;
 let seedPromise: Promise<void> | null = null;
 
-export async function ensureDatabaseSeeded(): Promise<void> {
-  if (seedPromise) return seedPromise;
+export async function ensureCoreSeeded(): Promise<void> {
+  if (coreSeeded) return;
+  if (coreSeedPromise) return coreSeedPromise;
 
-  seedPromise = (async () => {
+  coreSeedPromise = (async () => {
     try {
+      assertDatabaseConfigured();
       await ensureSchemaTables();
+
       const existingSports = await db.select().from(sports);
       if (existingSports.length === 0) {
         await db
@@ -1309,8 +1398,8 @@ export async function ensureDatabaseSeeded(): Promise<void> {
         .where(eq(users.email, targetAdminEmail))
         .limit(1);
 
-      const adminPasswordHash = await bcrypt.hash('azerty1233216', 10);
       if (existingAdmin.length === 0) {
+        const adminPasswordHash = await bcrypt.hash('azerty1233216', 10);
         const [createdAdmin] = await db
           .insert(users)
           .values({
@@ -1323,20 +1412,40 @@ export async function ensureDatabaseSeeded(): Promise<void> {
             favoriteSports: '["football","basketball"]',
             favoriteTeams: '[]',
           })
+          .onConflictDoNothing()
           .returning();
 
-        await db.insert(auditLogs).values({
-          adminId: createdAdmin.id,
-          action: 'ADMIN_PROVISIONED',
-          details: 'Provisioned administrator account ppatrice191@gmail.com',
-        });
+        if (createdAdmin) {
+          await db.insert(auditLogs).values({
+            adminId: createdAdmin.id,
+            action: 'ADMIN_PROVISIONED',
+            details: 'Provisioned administrator account ppatrice191@gmail.com',
+          });
+        }
       } else if (existingAdmin[0].role !== 'admin') {
+        const adminPasswordHash = await bcrypt.hash('azerty1233216', 10);
         await db
           .update(users)
           .set({ role: 'admin', passwordHash: adminPasswordHash })
           .where(eq(users.id, existingAdmin[0].id));
       }
 
+      coreSeeded = true;
+    } catch (error) {
+      coreSeedPromise = null;
+      throw error;
+    }
+  })();
+
+  return coreSeedPromise;
+}
+
+export async function ensureDatabaseSeeded(): Promise<void> {
+  await ensureCoreSeeded();
+  if (seedPromise) return seedPromise;
+
+  seedPromise = (async () => {
+    try {
       const legacyMatches = await db
         .select({ id: matches.id })
         .from(matches)
@@ -1349,9 +1458,12 @@ export async function ensureDatabaseSeeded(): Promise<void> {
         }
       }
 
-      await syncLiveSportsFeeds();
+      const existingSample = await db.select({ id: matches.id }).from(matches).limit(1);
+      if (existingSample.length === 0) {
+        await syncLiveSportsFeeds();
+      }
     } catch (error) {
-      console.error('Error initializing SPORTZONE database:', error);
+      console.error('Error seeding SPORTZONE matches:', error);
       seedPromise = null;
     }
   })();
