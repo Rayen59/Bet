@@ -345,7 +345,11 @@ app.get('/api/sports', async (_req, res) => {
 app.get('/api/matches', async (req, res) => {
   try {
     await ensureDatabaseSeeded();
-    await syncIfStale();
+    if (process.env.VERCEL === '1') {
+      await syncIfStale();
+    } else {
+      void syncIfStale();
+    }
 
     const sportSlug = String(req.query.sport || '').trim().toLowerCase();
     const competitionSlug = String(req.query.competition || '').trim().toLowerCase();
@@ -441,7 +445,11 @@ app.get('/api/matches', async (req, res) => {
 app.get('/api/matches/:id', async (req, res) => {
   try {
     await ensureDatabaseSeeded();
-    await syncIfStale();
+    if (process.env.VERCEL === '1') {
+      await syncIfStale();
+    } else {
+      void syncIfStale();
+    }
     const matchId = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(matchId)) {
       return res.status(400).json({ error: 'Invalid match ID.' });
@@ -1350,14 +1358,14 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`SPORTZONE server listening on http://0.0.0.0:${PORT}`);
 
-    // Automatic background live match minutes, scores, odds, and settlement sync every 12 seconds
+    // Automatic background live match minutes, scores, odds, and settlement sync every 8 seconds
     ensureDatabaseSeeded()
       .then(() => {
         setInterval(() => {
           syncLiveSportsFeeds().catch((err) => {
             console.warn('Background live sync warning:', err);
           });
-        }, 12_000);
+        }, 8_000);
       })
       .catch(() => {});
   });

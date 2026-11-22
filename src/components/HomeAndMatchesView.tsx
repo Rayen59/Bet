@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronsRight,
   ChevronUp,
   CircleDot,
   Disc,
@@ -15,7 +16,6 @@ import {
   PlayCircle,
   Radio,
   Receipt,
-  RefreshCw,
   Search,
   Settings,
   ShieldCheck,
@@ -38,8 +38,6 @@ interface HomeAndMatchesViewProps {
   onSearchChange: (q: string) => void;
   onNavigate: (route: AppRoute) => void;
   onSelectMatch: (matchId: number) => void;
-  onSyncLive: () => Promise<void>;
-  syncingLive: boolean;
 }
 
 const CAROUSEL_SLIDES = [
@@ -76,8 +74,6 @@ export function HomeAndMatchesView({
   onSearchChange,
   onNavigate,
   onSelectMatch,
-  onSyncLive,
-  syncingLive,
 }: HomeAndMatchesViewProps) {
   const { toggleSelection, isSelected } = useSlip();
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'upcoming' | 'finished'>('all');
@@ -144,14 +140,21 @@ export function HomeAndMatchesView({
       'premier-league',
       'la-liga',
       'bundesliga',
+      '2-bundesliga',
+      'dfb-pokal',
       'serie-a',
       'ligue-1',
+      'eredivisie',
+      'super-lig',
       'champions-league',
       'nba',
       'mls',
       'england-premier-league',
       'spain-laliga',
       'germany-bundesliga',
+      'germany-2-bundesliga',
+      'germany-3-liga',
+      'tunisia-ligue-i',
       'italy-serie-a',
       'france-ligue-1',
     ]);
@@ -161,18 +164,62 @@ export function HomeAndMatchesView({
       .sort((a, b) => {
         if (a.status === 'live' && b.status !== 'live') return -1;
         if (b.status === 'live' && a.status !== 'live') return 1;
+        const aTunGer = /tunisia|germany/i.test(a.competitionCountry || '') ? 1 : 0;
+        const bTunGer = /tunisia|germany/i.test(b.competitionCountry || '') ? 1 : 0;
+        if (aTunGer !== bTunGer) return bTunGer - aTunGer;
         const aMarq = marquee.has(a.competitionSlug) ? 1 : 0;
         const bMarq = marquee.has(b.competitionSlug) ? 1 : 0;
         if (aMarq !== bMarq) return bMarq - aMarq;
         return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
       })
-      .slice(0, 8);
+      .slice(0, 10);
   }, [matches]);
 
   const boostedMatches = useMemo(() => {
     const liveOrFeat = matches.filter((m) => m.status === 'live' || (m.status === 'upcoming' && m.featured));
-    return (liveOrFeat.length > 0 ? liveOrFeat : filteredMatches).slice(0, 12);
+    return (liveOrFeat.length > 0 ? liveOrFeat : filteredMatches).slice(0, 18);
   }, [matches, filteredMatches]);
+
+  const boostedCardItems = useMemo(() => {
+    const openPool = matches.filter((m) => m.status !== 'finished' && m.markets.length > 0);
+    const prioritized = [...openPool].sort((a, b) => {
+      const aScore =
+        (/tunisia|germany|netherlands|italy|england|spain/i.test(a.competitionCountry || '') ? 2 : 0) +
+        (a.status === 'live' ? 1 : 0);
+      const bScore =
+        (/tunisia|germany|netherlands|italy|england|spain/i.test(b.competitionCountry || '') ? 2 : 0) +
+        (b.status === 'live' ? 1 : 0);
+      return bScore - aScore;
+    });
+
+    return prioritized.slice(0, 10).map((m, idx) => {
+      const dc = m.markets.find((mk) => mk.marketType === 'Double chance' && mk.selectionName === 'X or 2');
+      const total = m.markets.find((mk) => mk.marketType === 'Total' && mk.selectionName === 'Over 2.5');
+      const one = m.markets.find((mk) => (mk.marketType === '1×2' || mk.marketType === '1X2') && mk.selectionName === '1');
+      const picked = idx % 3 === 0 ? total || one || m.markets[0] : idx % 3 === 1 ? dc || one || m.markets[0] : one || m.markets[0];
+      const baseOdd = Math.max(1.05, Math.round((picked.simulatedOdds / 1.09) * 100) / 100);
+      return { match: m, market: picked, baseOdd };
+    });
+  }, [matches]);
+
+  const leagueShortcuts = useMemo(() => {
+    const wanted = [
+      { label: 'Tunisia · Ligue I', match: (c: CompetitionItem) => /tunisia/i.test(c.country) },
+      { label: 'Bundesliga', match: (c: CompetitionItem) => /germany/i.test(c.country) && /^bundesliga$/i.test(c.name) },
+      { label: '2. Bundesliga', match: (c: CompetitionItem) => /germany/i.test(c.country) && /2\.\s*bundesliga/i.test(c.name) },
+      { label: '3. Liga', match: (c: CompetitionItem) => /germany/i.test(c.country) && /3\.\s*liga/i.test(c.name) },
+      { label: 'Premier League', match: (c: CompetitionItem) => /england/i.test(c.country) && /premier league/i.test(c.name) },
+      { label: 'La Liga', match: (c: CompetitionItem) => /spain/i.test(c.country) && /la\s*liga/i.test(c.name) },
+      { label: 'Serie A', match: (c: CompetitionItem) => /italy/i.test(c.country) && /serie a/i.test(c.name) },
+      { label: 'Ligue 1', match: (c: CompetitionItem) => /france/i.test(c.country) && /ligue 1/i.test(c.name) },
+    ];
+    return wanted
+      .map((w) => {
+        const found = competitions.find(w.match);
+        return found ? { label: w.label, slug: found.slug } : null;
+      })
+      .filter((x): x is { label: string; slug: string } => Boolean(x));
+  }, [competitions]);
 
   if (loading) {
     return (
@@ -422,12 +469,13 @@ export function HomeAndMatchesView({
             </div>
             <button
               type="button"
-              onClick={onSyncLive}
-              disabled={syncingLive}
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-zinc-300 hover:text-[#f5b800] transition-colors"
+              onClick={() => onNavigate('live')}
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-zinc-300 hover:text-[#f5b800] transition-colors whitespace-nowrap shrink-0"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-[#f5b800] ${syncingLive ? 'animate-spin' : ''}`} />
-              <span>{syncingLive ? 'Syncing...' : `Sync Live (${liveMatches.length})`}</span>
+              <span className="rounded-xs bg-[#dc2626] px-1.5 py-0.5 text-[9px] font-extrabold text-white">
+                LIVE
+              </span>
+              <span>{liveMatches.length} Live →</span>
             </button>
           </div>
 
@@ -481,7 +529,7 @@ export function HomeAndMatchesView({
                     className="w-full flex items-center justify-between gap-2.5 text-left hover:opacity-90"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="flex items-center -space-x-1.5 shrink-0">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <TeamBadge
                           shortName={m.homeTeam.shortName}
                           color={m.homeTeam.logo}
@@ -504,11 +552,20 @@ export function HomeAndMatchesView({
                         </p>
                       </div>
                     </div>
-                    {m.status !== 'upcoming' && (
-                      <div className="font-mono-tabular text-sm font-extrabold text-[#f5b800] shrink-0">
+                    {m.status === 'live' ? (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-mono-tabular text-xs font-extrabold text-[#f5b800]">
+                          {m.homeScore}:{m.awayScore}
+                        </span>
+                        <span className="rounded-sm border border-zinc-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                          LIVE
+                        </span>
+                      </div>
+                    ) : m.status === 'finished' ? (
+                      <div className="font-mono-tabular text-xs font-bold text-zinc-400 shrink-0">
                         {m.homeScore}:{m.awayScore}
                       </div>
-                    )}
+                    ) : null}
                   </button>
 
                   {/* Crisp Light Odds Buttons */}
@@ -557,20 +614,137 @@ export function HomeAndMatchesView({
           </div>
         </section>
 
-        {/* Solid Gold Boosted Odds Full-Width Bar matching 5f64d28e */}
-        <div className="rounded-md bg-[#f5b800] text-[#111111] px-3.5 py-2.5 flex items-center justify-between font-heading font-extrabold text-sm">
-          <span className="inline-flex items-center gap-2">
-            <Zap className="w-4 h-4 fill-current" />
-            <span>Boosted Odds</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => onNavigate('live')}
-            className="text-xs font-bold hover:underline"
-          >
-            All Matches ({matches.length}) →
-          </button>
-        </div>
+        {/* Solid Gold Boosted Odds Full-Width Bar + Horizontal Cards matching screenshot 0cabe743 */}
+        <section className="space-y-2.5">
+          <div className="rounded-md bg-[#f5b800] text-[#111111] px-3.5 py-2.5 flex items-center justify-between font-heading font-extrabold text-sm">
+            <span className="inline-flex items-center gap-2">
+              <Zap className="w-4 h-4 fill-current" />
+              <span>Boosted Odds</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => onNavigate('live')}
+              className="text-xs font-bold hover:underline"
+            >
+              All Matches ({matches.length}) →
+            </button>
+          </div>
+
+          {boostedCardItems.length > 0 && (
+            <div className="flex gap-2.5 overflow-x-auto pb-1 snap-x">
+              {boostedCardItems.map(({ match: m, market: mkt, baseOdd }) => {
+                const dt = new Date(m.startTime);
+                const dtFormatted = `${String(dt.getDate()).padStart(2, '0')}/${String(
+                  dt.getMonth() + 1
+                ).padStart(2, '0')} • ${String(dt.getHours()).padStart(2, '0')}:${String(
+                  dt.getMinutes()
+                ).padStart(2, '0')}`;
+                const active = isSelected(mkt.id);
+
+                return (
+                  <div
+                    key={`boost_${m.id}_${mkt.id}`}
+                    className="snap-start shrink-0 w-[275px] sm:w-[290px] rounded-lg bg-gradient-to-b from-[#2c313b] to-[#1a1b20] border border-zinc-700/60 p-3 flex flex-col justify-between gap-2.5"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <CircleDot className="w-3.5 h-3.5 text-zinc-200 shrink-0" />
+                        <span className="rounded-sm bg-[#169be6] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white">
+                          BOOSTED ODDS
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-300">
+                        <span className="truncate font-medium">
+                          {m.competitionCountry ? `${m.competitionCountry} · ` : ''}
+                          {m.competitionName}
+                        </span>
+                        <span className="font-mono-tabular text-zinc-300 shrink-0">{dtFormatted}</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onSelectMatch(m.id)}
+                        className="block w-full text-left font-heading text-xs font-bold text-white hover:text-[#f5b800] truncate"
+                      >
+                        {m.homeTeam.name} vs. {m.awayTeam.name}
+                      </button>
+
+                      <div className="space-y-0.5 pt-0.5">
+                        <p className="text-[11px] text-zinc-400 truncate">{mkt.marketType}</p>
+                        <p className="text-xs font-semibold text-white truncate">{mkt.selectionName}</p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleSelection({
+                          matchId: m.id,
+                          marketId: mkt.id,
+                          matchLabel: `${m.homeTeam.name} vs ${m.awayTeam.name}`,
+                          competitionName: m.competitionName,
+                          marketType: mkt.marketType,
+                          selectionName: mkt.selectionName,
+                          simulatedOdds: mkt.simulatedOdds,
+                          status: m.status,
+                          startTime: m.startTime,
+                        })
+                      }
+                      className={`w-full rounded-md py-2 px-3 flex items-center justify-center gap-2 font-mono-tabular text-xs transition-colors ${
+                        active
+                          ? 'bg-[#f5b800] text-[#111111] font-bold'
+                          : 'bg-[#dedee2] hover:bg-white text-[#111111]'
+                      }`}
+                    >
+                      <span className={`line-through ${active ? 'text-[#111111]/60' : 'text-zinc-500'}`}>
+                        {baseOdd.toFixed(2)}
+                      </span>
+                      <ChevronsRight
+                        className={`w-3.5 h-3.5 ${active ? 'text-[#111111]' : 'text-[#169be6]'}`}
+                      />
+                      <span className="font-extrabold text-sm">{mkt.simulatedOdds.toFixed(2)}</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Quick Tunisia & Germany + Major League Tabs */}
+        {leagueShortcuts.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+            <button
+              type="button"
+              onClick={() => setSelectedCompetition('all')}
+              className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 transition-colors ${
+                selectedCompetition === 'all'
+                  ? 'bg-[#f5b800] text-[#111111] font-bold'
+                  : 'bg-[#1c1c20] text-zinc-300 hover:text-white'
+              }`}
+            >
+              All Leagues
+            </button>
+            {leagueShortcuts.map((ls) => {
+              const active = selectedCompetition === ls.slug;
+              return (
+                <button
+                  key={ls.slug}
+                  type="button"
+                  onClick={() => setSelectedCompetition(active ? 'all' : ls.slug)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap shrink-0 transition-colors ${
+                    active
+                      ? 'bg-[#f5b800] text-[#111111] font-bold'
+                      : 'bg-[#1c1c20] text-zinc-300 hover:text-white'
+                  }`}
+                >
+                  {ls.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Live & Scheduled Football / Sports Matchboard */}
         <section className="rounded-md border border-zinc-800/80 bg-[#17171a] overflow-hidden">
@@ -644,19 +818,9 @@ export function HomeAndMatchesView({
             <span>{pageTitle}</span>
           </h1>
           <p className="text-xs text-zinc-400 mt-0.5">
-            {filteredMatches.length} real-time synchronized matches
+            {filteredMatches.length} real-time matches · {liveMatches.length} live
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={onSyncLive}
-          disabled={syncingLive}
-          className="inline-flex items-center gap-2 rounded-md bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-heading font-bold px-3.5 py-2 text-xs transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${syncingLive ? 'animate-spin' : ''}`} />
-          <span>{syncingLive ? 'Syncing...' : 'Sync Live Scores'}</span>
-        </button>
       </div>
 
       {/* Filters */}

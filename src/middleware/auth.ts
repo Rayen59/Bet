@@ -5,7 +5,14 @@ import { adminAuth } from '../lib/firebase-admin.ts';
 import { db } from '../db/index.ts';
 import { users } from '../db/schema.ts';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'sportzone-sim-secret-key-2026';
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  process.env.AUTH_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  process.env.POSTGRES_PASSWORD ||
+  process.env.SQL_PASSWORD ||
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+  'sportzone-sim-secret-key-2026';
 const STARTING_VIRTUAL_CREDITS = 0; // Users begin with 0.00 DT until credited by Admin
 const OWNER_ADMIN_EMAILS = new Set(['ppatrice191@gmail.com', 'ppatrice189@gmail.com']);
 

@@ -39,6 +39,20 @@ const PUBLIC_LIVE_FEEDS: LiveFeedSpec[] = [
     country: 'Germany',
   },
   {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ger.2/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: '2-bundesliga',
+    competitionName: '2. Bundesliga',
+    country: 'Germany',
+  },
+  {
+    url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/ger.dfb_pokal/scoreboard',
+    sportSlug: 'football',
+    competitionSlug: 'dfb-pokal',
+    competitionName: 'DFB-Pokal',
+    country: 'Germany',
+  },
+  {
     url: 'https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard',
     sportSlug: 'football',
     competitionSlug: 'la-liga',
@@ -144,8 +158,13 @@ const PRIORITY_LIVESCORE_LEAGUES = new Set([
   'jupiler pro league',
   'botola pro',
   'ligue 1 tunisia',
+  'ligue i',
   'serie b',
   '2. bundesliga',
+  '3. liga',
+  'frauen-bundesliga',
+  'dfb-pokal',
+  'dfb pokal',
   'segunda division',
   'super league',
   'j1 league',
@@ -153,6 +172,17 @@ const PRIORITY_LIVESCORE_LEAGUES = new Set([
   'k league 2',
   'liga mx',
 ]);
+
+function isTunisiaOrGermanyStage(country: string, compName: string): boolean {
+  const c = country.toLowerCase();
+  const n = compName.toLowerCase();
+  if (c === 'tunisia' || c === 'tunisie') return true;
+  if (c === 'germany' || c === 'deutschland' || c === 'allemagne') {
+    // Include Bundesliga, 2. Bundesliga, 3. Liga, Frauen-Bundesliga, DFB-Pokal, and Regionalliga
+    return /bundesliga|3\.\s*liga|dfb|regionalliga/i.test(n);
+  }
+  return false;
+}
 
 const TEAM_COLORS = [
   '#eab308',
@@ -184,8 +214,12 @@ function makeShortName(name: string): string {
 
 function normalizeTeamKey(name: string): string {
   return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/\b(fc|cf|sc|ac|as|afc|ss|us|cd|ud|rc|rcd|vfl|vfb|tsv|fsv|bsc|rb|fk|sk|bk)\b/g, '')
+    .replace(/\b(fc|cf|sc|ac|as|afc|ss|us|cd|ud|rc|rcd|vfl|vfb|tsv|fsv|bsc|rb|fk|sk|bk|sv|tsg|1\.|04|05|98|hamburg|hamburger)\b/g, (m) =>
+      m === 'hamburger' ? 'hamburg' : ''
+    )
     .replace(/[^a-z0-9]/g, '')
     .trim();
 }
@@ -686,7 +720,9 @@ async function fetchLiveScoreFootballFixtures(): Promise<{ fixtures: UnifiedFixt
       const compName = String(stage.Snm || 'Football League').trim();
       const country = String(stage.Cnm || 'International').trim();
       const compSlug = String(stage.Scd || compName.toLowerCase().replace(/[^a-z0-9]+/g, '-')).slice(0, 60);
-      const isPriorityLeague = PRIORITY_LIVESCORE_LEAGUES.has(compName.toLowerCase());
+      const isPriorityLeague =
+        PRIORITY_LIVESCORE_LEAGUES.has(compName.toLowerCase()) ||
+        isTunisiaOrGermanyStage(country, compName);
 
       if (!r.isLiveFeed && !isPriorityLeague) {
         // Skip minor non-live divisions from the huge 185-stage list to keep board sharp
@@ -748,7 +784,15 @@ async function fetchLiveScoreFootballFixtures(): Promise<{ fixtures: UnifiedFixt
     }
   }
 
-  return { fixtures: fixtures.slice(0, 95), sources };
+  // Prioritize Live, Tunisia, Germany, and major featured leagues before capping
+  fixtures.sort((a, b) => {
+    const aScore = (a.status === 'live' ? 4 : 0) + (isTunisiaOrGermanyStage(a.country, a.competitionName) ? 2 : 0) + (a.featuredComp ? 1 : 0);
+    const bScore = (b.status === 'live' ? 4 : 0) + (isTunisiaOrGermanyStage(b.country, b.competitionName) ? 2 : 0) + (b.featuredComp ? 1 : 0);
+    if (aScore !== bScore) return bScore - aScore;
+    return a.startTime.getTime() - b.startTime.getTime();
+  });
+
+  return { fixtures: fixtures.slice(0, 220), sources };
 }
 
 async function fetchEspnFixtures(): Promise<{ fixtures: UnifiedFixture[]; sources: string[] }> {
@@ -792,7 +836,7 @@ async function fetchEspnFixtures(): Promise<{ fixtures: UnifiedFixture[]; source
       const bLive = b?.status?.type?.state === 'in' ? 0 : b?.status?.type?.state === 'pre' ? 1 : 2;
       return aLive - bLive;
     });
-    const events = sortedEvents.slice(0, feed.competitionSlug === 'world-football' ? 50 : 14);
+    const events = sortedEvents.slice(0, feed.competitionSlug === 'world-football' ? 80 : 18);
 
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
@@ -945,7 +989,7 @@ let lastSyncTimestamp = 0;
 let activeSyncPromise: Promise<{ synced: number; updated: number; sources: string[] }> | null = null;
 
 export async function syncIfStale(): Promise<void> {
-  if (Date.now() - lastSyncTimestamp > 10_000) {
+  if (Date.now() - lastSyncTimestamp > 8_000) {
     await syncLiveSportsFeeds();
   }
 }
@@ -1021,19 +1065,28 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
         if (matchedRow) {
           seenExternalIds.add(matchedRow.externalId || '');
           const prevStatus = matchedRow.status;
+          const hasChanges =
+            matchedRow.homeScore !== fx.homeScore ||
+            matchedRow.awayScore !== fx.awayScore ||
+            matchedRow.status !== fx.status ||
+            matchedRow.matchTimer !== fx.matchTimer ||
+            Math.abs(new Date(matchedRow.startTime).getTime() - fx.startTime.getTime()) > 60_000;
 
-          await db
-            .update(matches)
-            .set({
-              homeScore: fx.homeScore,
-              awayScore: fx.awayScore,
-              status: fx.status,
-              matchTimer: fx.matchTimer,
-              startTime: fx.startTime,
-              dataSource: 'live_api',
-              featured: fx.featured || matchedRow.featured,
-            })
-            .where(eq(matches.id, matchedRow.id));
+          if (hasChanges) {
+            await db
+              .update(matches)
+              .set({
+                homeScore: fx.homeScore,
+                awayScore: fx.awayScore,
+                status: fx.status,
+                matchTimer: fx.matchTimer,
+                startTime: fx.startTime,
+                dataSource: 'live_api',
+                featured: fx.featured || matchedRow.featured,
+              })
+              .where(eq(matches.id, matchedRow.id));
+            updated++;
+          }
 
           if (prevStatus !== 'finished' && fx.status === 'finished') {
             await settleBetsForFinishedMatch(matchedRow.id);
@@ -1047,7 +1100,6 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
               fx.oddsHint
             );
           }
-          updated++;
         } else {
           // Do not insert old already-finished fixtures from the distant past if DB didn't have them
           if (fx.status === 'finished' && Date.now() - fx.startTime.getTime() > 14 * 3600_000) {
@@ -1116,6 +1168,118 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
   return activeSyncPromise;
 }
 
+async function ensureSchemaTables(): Promise<void> {
+  const regCheck = await db.execute(sql`SELECT to_regclass('public.users') AS tbl`);
+  const firstRow = (regCheck as any)?.rows?.[0];
+  if (firstRow?.tbl) return;
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS users (
+      id serial PRIMARY KEY,
+      uid text NOT NULL UNIQUE,
+      username text NOT NULL,
+      email text NOT NULL UNIQUE,
+      password_hash text,
+      virtual_balance double precision NOT NULL DEFAULT 0,
+      role text NOT NULL DEFAULT 'user',
+      favorite_teams text NOT NULL DEFAULT '[]',
+      favorite_sports text NOT NULL DEFAULT '[]',
+      reset_token text,
+      reset_token_expires timestamp,
+      created_at timestamp DEFAULT now() NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS sports (
+      id serial PRIMARY KEY,
+      slug text NOT NULL UNIQUE,
+      name text NOT NULL,
+      icon text NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS competitions (
+      id serial PRIMARY KEY,
+      slug text NOT NULL UNIQUE,
+      name text NOT NULL,
+      sport_id integer NOT NULL REFERENCES sports(id),
+      country text NOT NULL,
+      featured boolean NOT NULL DEFAULT false
+    );
+    CREATE TABLE IF NOT EXISTS teams (
+      id serial PRIMARY KEY,
+      name text NOT NULL,
+      short_name text NOT NULL,
+      logo text NOT NULL,
+      sport_id integer NOT NULL REFERENCES sports(id)
+    );
+    CREATE TABLE IF NOT EXISTS matches (
+      id serial PRIMARY KEY,
+      external_id text UNIQUE,
+      sport_id integer NOT NULL REFERENCES sports(id),
+      competition_id integer NOT NULL REFERENCES competitions(id),
+      home_team_id integer NOT NULL REFERENCES teams(id),
+      away_team_id integer NOT NULL REFERENCES teams(id),
+      home_score integer NOT NULL DEFAULT 0,
+      away_score integer NOT NULL DEFAULT 0,
+      status text NOT NULL DEFAULT 'upcoming',
+      match_timer text NOT NULL DEFAULT '00:00',
+      start_time timestamp NOT NULL,
+      data_source text NOT NULL DEFAULT 'simulated',
+      featured boolean NOT NULL DEFAULT false,
+      created_at timestamp DEFAULT now() NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS markets (
+      id serial PRIMARY KEY,
+      match_id integer NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+      market_type text NOT NULL,
+      selection_name text NOT NULL,
+      simulated_odds double precision NOT NULL,
+      active boolean NOT NULL DEFAULT true
+    );
+    CREATE TABLE IF NOT EXISTS virtual_bets (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id),
+      reference text NOT NULL UNIQUE,
+      idempotency_key text UNIQUE,
+      virtual_stake double precision NOT NULL,
+      combined_odds double precision NOT NULL,
+      potential_virtual_winnings double precision NOT NULL,
+      status text NOT NULL DEFAULT 'pending',
+      created_at timestamp DEFAULT now() NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS virtual_bet_selections (
+      id serial PRIMARY KEY,
+      virtual_bet_id integer NOT NULL REFERENCES virtual_bets(id) ON DELETE CASCADE,
+      match_id integer NOT NULL REFERENCES matches(id),
+      market_id integer NOT NULL REFERENCES markets(id),
+      market_type text NOT NULL,
+      selection_name text NOT NULL,
+      simulated_odds double precision NOT NULL,
+      match_label text NOT NULL,
+      result text NOT NULL DEFAULT 'pending'
+    );
+    CREATE TABLE IF NOT EXISTS transactions (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id),
+      amount double precision NOT NULL,
+      transaction_type text NOT NULL,
+      description text NOT NULL,
+      created_at timestamp DEFAULT now() NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id serial PRIMARY KEY,
+      admin_id integer NOT NULL REFERENCES users(id),
+      action text NOT NULL,
+      details text,
+      created_at timestamp DEFAULT now() NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS promotions_claimed (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL REFERENCES users(id),
+      promo_code text NOT NULL,
+      reward_credits double precision NOT NULL,
+      claimed_at timestamp DEFAULT now() NOT NULL
+    );
+  `);
+}
+
 let seedPromise: Promise<void> | null = null;
 
 export async function ensureDatabaseSeeded(): Promise<void> {
@@ -1123,6 +1287,7 @@ export async function ensureDatabaseSeeded(): Promise<void> {
 
   seedPromise = (async () => {
     try {
+      await ensureSchemaTables();
       const existingSports = await db.select().from(sports);
       if (existingSports.length === 0) {
         await db

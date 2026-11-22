@@ -61,7 +61,6 @@ export default function App() {
   const [matches, setMatches] = useState<MatchItem[]>([]);
   const [liveTotal, setLiveTotal] = useState(0);
   const [loadingMatches, setLoadingMatches] = useState(true);
-  const [syncingLive, setSyncingLive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   const loadCatalogAndMatches = useCallback(async (silent = false) => {
@@ -101,7 +100,7 @@ export default function App() {
       if (document.visibilityState === 'visible') {
         loadCatalogAndMatches(true);
       }
-    }, 10_000);
+    }, 5_000);
 
     const onFocus = () => {
       loadCatalogAndMatches(true);
@@ -114,24 +113,6 @@ export default function App() {
       window.removeEventListener('focus', onFocus);
     };
   }, [loadCatalogAndMatches]);
-
-  const handleSyncLive = async () => {
-    setSyncingLive(true);
-    try {
-      const res = await apiFetch<{ synced: number; updated: number }>('/api/matches/sync-live', {
-        method: 'POST',
-      });
-      await loadCatalogAndMatches();
-      showToast(
-        `Real-time matches synchronized (${res.synced} added, ${res.updated} updated).`,
-        'success'
-      );
-    } catch (err: any) {
-      showToast(err?.message || 'Live feed synchronization failed.', 'error');
-    } finally {
-      setSyncingLive(false);
-    }
-  };
 
   const navigate = (nextRoute: AppRoute) => {
     setRoute(nextRoute);
@@ -692,8 +673,6 @@ export default function App() {
               onSearchChange={setSearchQuery}
               onNavigate={navigate}
               onSelectMatch={openMatchDetail}
-              onSyncLive={handleSyncLive}
-              syncingLive={syncingLive}
             />
           )}
 

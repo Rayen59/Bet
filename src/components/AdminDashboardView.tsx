@@ -6,7 +6,6 @@ import {
   Check,
   Eye,
   Plus,
-  RefreshCw,
   Search,
   ShieldAlert,
   Sliders,
@@ -88,7 +87,6 @@ export function AdminDashboardView({
   const [processingDepositId, setProcessingDepositId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'users' | 'matches' | 'odds' | 'catalog' | 'activity'>('users');
-  const [syncing, setSyncing] = useState(false);
 
   // User Search & Inspector
   const [userSearch, setUserSearch] = useState('');
@@ -172,6 +170,9 @@ export function AdminDashboardView({
         loadOverview(true);
       });
       es.addEventListener('balance_updated', () => {
+        loadOverview(true);
+      });
+      es.addEventListener('matches_updated', () => {
         loadOverview(true);
       });
     } catch {
@@ -324,21 +325,6 @@ export function AdminDashboardView({
     }
   };
 
-  const handleSyncLive = async () => {
-    setSyncing(true);
-    try {
-      const res = await apiFetch<{ synced: number; updated: number }>('/api/matches/sync-live', {
-        method: 'POST',
-      });
-      await Promise.all([onRefreshMatches(), loadOverview()]);
-      showToast(`Live feed sync complete (${res.synced} added, ${res.updated} updated).`, 'success');
-    } catch (err: any) {
-      showToast(err?.message || 'Live feed sync failed.', 'error');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const handleCreateMatch = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -450,16 +436,6 @@ export function AdminDashboardView({
             Logged in as {user.email} · Manage users, credit DT balances, inspect winnings (Gain), and live matches
           </p>
         </div>
-
-        <button
-          type="button"
-          disabled={syncing}
-          onClick={handleSyncLive}
-          className="inline-flex items-center gap-2 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2 text-xs transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
-          <span>{syncing ? 'Syncing Live Feeds...' : 'Sync Real Matches'}</span>
-        </button>
       </div>
 
       {/* KPI Strip */}

@@ -67,14 +67,26 @@ export function MatchDetailView({ matchId, onBack }: MatchDetailViewProps) {
     };
 
     fetchDetailAndCenter(true);
+
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource('/api/stream');
+      es.addEventListener('matches_updated', () => {
+        if (active) fetchDetailAndCenter(false);
+      });
+    } catch {
+      // Fallback handled by interval
+    }
+
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchDetailAndCenter(false);
       }
-    }, 10_000);
+    }, 6_000);
 
     return () => {
       active = false;
+      es?.close();
       clearInterval(interval);
     };
   }, [matchId]);
