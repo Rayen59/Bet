@@ -37,7 +37,7 @@ export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
   const isFinished = match.status === 'finished';
 
   return (
-    <div className="group border-b border-zinc-800/80 last:border-b-0 bg-[#1c1c1f] hover:bg-[#232327] px-4 py-3.5 transition-colors">
+    <div className="group border-b border-zinc-800/80 last:border-b-0 bg-[#18191d] hover:bg-[#1f2127] px-4 py-3.5 transition-colors">
       {/* Top Meta Line */}
       <div className="flex items-center justify-between gap-2 mb-2.5 text-xs text-zinc-400">
         <div className="flex items-center gap-2 min-w-0 truncate">
@@ -45,7 +45,7 @@ export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
             type="button"
             onClick={() => onSelectMatch(match.id)}
             className="rounded bg-[#f5b800] hover:bg-[#fbbf24] px-1.5 py-0.5 text-[10px] font-extrabold text-[#111111] leading-none shrink-0"
-            title="Open Bet Builder"
+            title="Ouvrir Bet Builder"
           >
             {matchPicks.length > 1 ? `BB (${matchPicks.length})` : 'BB'}
           </button>
@@ -136,7 +136,7 @@ export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
           </div>
         </button>
 
-        {/* Crisp Light Odds Buttons matching 0cabe743 -> Solid Gold Active */}
+        {/* Crisp Light Odds Buttons -> Solid Gold Active */}
         <div
           className={`grid gap-2 shrink-0 ${
             primaryMarkets.length === 3 ? 'grid-cols-3 md:w-[285px]' : 'grid-cols-2 md:w-[215px]'
@@ -168,7 +168,7 @@ export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
                     }
                   )
                 }
-                className={`flex items-center justify-between gap-1 rounded-lg px-3 py-2.5 text-xs transition-colors min-h-[42px] ${
+                className={`flex items-center justify-between gap-1 rounded-lg px-3 py-2.5 text-xs transition-colors min-h-[44px] ${
                   isFinished
                     ? 'bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed'
                     : active

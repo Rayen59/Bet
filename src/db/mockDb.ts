@@ -33,6 +33,8 @@ const TABLES: PgTable[] = [
   schema.transactions,
   schema.auditLogs,
   schema.promotionsClaimed,
+  schema.depositRequests,
+  schema.contactMessages,
 ];
 
 function buildTableMeta(table: PgTable): TableMeta {

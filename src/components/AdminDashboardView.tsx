@@ -4,15 +4,20 @@ import {
   ArrowDownCircle,
   Banknote,
   Check,
+  Clock,
   Eye,
+  MessageCircle,
   Plus,
   Search,
+  Send,
   ShieldAlert,
   Sliders,
   Trash2,
   Trophy,
   Users,
   X,
+  XCircle,
+  ZoomIn,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -22,12 +27,14 @@ import {
   AppRoute,
   AuditLogItem,
   CompetitionItem,
+  ContactMessageItem,
   DepositRequestItem,
   MatchItem,
   SportItem,
   TransactionItem,
   VirtualBetItem,
 } from '../types/sportzone';
+import { OperatorBadge } from './OperatorLogos';
 
 interface AdminDashboardViewProps {
   matches: MatchItem[];
@@ -84,9 +91,20 @@ export function AdminDashboardView({
 
   const [overview, setOverview] = useState<AdminOverviewData | null>(null);
   const [deposits, setDeposits] = useState<DepositRequestItem[]>([]);
+  const [depositNotes, setDepositNotes] = useState<Record<number, string>>({});
   const [processingDepositId, setProcessingDepositId] = useState<number | null>(null);
+  const [previewScreenshot, setPreviewScreenshot] = useState<string | null>(null);
+  const [depositFilter, setDepositFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+
+  const [messages, setMessages] = useState<ContactMessageItem[]>([]);
+  const [selectedChatUserId, setSelectedChatUserId] = useState<number | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
+
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'users' | 'matches' | 'odds' | 'catalog' | 'activity'>('users');
+  const [activeTab, setActiveTab] = useState<
+    'deposits' | 'messages' | 'users' | 'matches' | 'odds' | 'catalog' | 'activity'
+  >('deposits');
 
   // User Search & Inspector
   const [userSearch, setUserSearch] = useState('');
@@ -120,12 +138,14 @@ export function AdminDashboardView({
   const loadOverview = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [data, depRes] = await Promise.all([
+      const [data, depRes, msgRes] = await Promise.all([
         apiFetch<AdminOverviewData>('/api/admin/overview'),
         apiFetch<{ deposits: DepositRequestItem[] }>('/api/admin/deposits'),
+        apiFetch<{ messages: ContactMessageItem[] }>('/api/contact/messages'),
       ]);
       setOverview(data);
       setDeposits(depRes.deposits);
+      setMessages(msgRes.messages);
       if (data.sports.length > 0 && !data.sports.some((s) => s.id === sportId)) {
         setSportId(data.sports[0].id);
         setNewCompSportId(data.sports[0].id);
@@ -148,30 +168,45 @@ export function AdminDashboardView({
     }
   }, [user, loadOverview]);
 
-  // Real-time SSE listener + 6s silent polling for new deposits & balance updates
+  // Real-time SSE listener + 5s silent polling for new deposits, D17 screenshots & chat messages
   useEffect(() => {
     if (user?.role !== 'admin') return;
+
+    const onDepositReq = (ev: Event) => {
+      const payload = (ev as CustomEvent<{
+        username?: string;
+        operator?: string;
+        amount?: number;
+      }>).detail;
+      if (payload?.username && payload?.amount) {
+        showToast(
+          `Nouvelle recharge (${payload.operator || 'Dépôt'}) : ${payload.username} (+${Number(
+            payload.amount
+          ).toFixed(2)} DT)`,
+          'info'
+        );
+      }
+      loadOverview(true);
+    };
+
+    const onDepositUpd = () => loadOverview(true);
+    const onBalanceUpd = () => loadOverview(true);
+    const onMessageRec = (ev: Event) => {
+      const payload = (ev as CustomEvent<{ senderRole?: string; senderName?: string }>).detail;
+      if (payload?.senderRole === 'user' && payload?.senderName) {
+        showToast(`Nouveau message de ${payload.senderName}`, 'info');
+      }
+      loadOverview(true);
+    };
+
+    window.addEventListener('sportzone:deposit_requested', onDepositReq);
+    window.addEventListener('sportzone:deposit_updated', onDepositUpd);
+    window.addEventListener('sportzone:balance_updated', onBalanceUpd);
+    window.addEventListener('sportzone:message_received', onMessageRec);
 
     let es: EventSource | null = null;
     try {
       es = new EventSource('/api/stream');
-      es.addEventListener('deposit_requested', (ev) => {
-        try {
-          const payload = JSON.parse((ev as MessageEvent).data || '{}') as {
-            username?: string;
-            amount?: number;
-          };
-          if (payload.username && payload.amount) {
-            showToast(`New deposit request: ${payload.username} (+${payload.amount.toFixed(2)} DT)`, 'info');
-          }
-        } catch {
-          // ignore
-        }
-        loadOverview(true);
-      });
-      es.addEventListener('balance_updated', () => {
-        loadOverview(true);
-      });
       es.addEventListener('matches_updated', () => {
         loadOverview(true);
       });
@@ -183,9 +218,13 @@ export function AdminDashboardView({
       if (document.visibilityState === 'visible') {
         loadOverview(true);
       }
-    }, 6_000);
+    }, 5_000);
 
     return () => {
+      window.removeEventListener('sportzone:deposit_requested', onDepositReq);
+      window.removeEventListener('sportzone:deposit_updated', onDepositUpd);
+      window.removeEventListener('sportzone:balance_updated', onBalanceUpd);
+      window.removeEventListener('sportzone:message_received', onMessageRec);
       es?.close();
       clearInterval(poll);
     };
@@ -285,15 +324,19 @@ export function AdminDashboardView({
   const handleApproveDeposit = async (depositId: number, targetUserId: number) => {
     setProcessingDepositId(depositId);
     try {
-      await apiFetch(`/api/admin/deposits/${depositId}/approve`, { method: 'POST' });
-      showToast('Deposit approved & DT balance credited in real time.', 'success');
+      const adminNote = (depositNotes[depositId] || '').trim();
+      await apiFetch(`/api/admin/deposits/${depositId}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ adminNote: adminNote || undefined }),
+      });
+      showToast('Recharge acceptée & solde crédité en temps réel.', 'success');
       await Promise.all([
         loadOverview(true),
         inspectedUser?.user.id === targetUserId ? handleInspectUser(targetUserId) : Promise.resolve(),
         refreshProfile(),
       ]);
     } catch (err: any) {
-      showToast(err?.message || 'Failed to approve deposit.', 'error');
+      showToast(err?.message || 'Impossible d’accepter la recharge.', 'error');
     } finally {
       setProcessingDepositId(null);
     }
@@ -302,13 +345,38 @@ export function AdminDashboardView({
   const handleRejectDeposit = async (depositId: number) => {
     setProcessingDepositId(depositId);
     try {
-      await apiFetch(`/api/admin/deposits/${depositId}/reject`, { method: 'POST' });
-      showToast('Deposit request rejected.', 'info');
+      const adminNote = (depositNotes[depositId] || '').trim();
+      await apiFetch(`/api/admin/deposits/${depositId}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ adminNote: adminNote || undefined }),
+      });
+      showToast('Demande de recharge refusée.', 'info');
       await loadOverview(true);
     } catch (err: any) {
-      showToast(err?.message || 'Failed to reject deposit.', 'error');
+      showToast(err?.message || 'Impossible de refuser la recharge.', 'error');
     } finally {
       setProcessingDepositId(null);
+    }
+  };
+
+  const handleSendAdminReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChatUserId || !replyText.trim()) return;
+    setSendingReply(true);
+    try {
+      await apiFetch('/api/contact/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: selectedChatUserId,
+          message: replyText.trim(),
+        }),
+      });
+      setReplyText('');
+      await loadOverview(true);
+    } catch (err: any) {
+      showToast(err?.message || 'Impossible d’envoyer la réponse.', 'error');
+    } finally {
+      setSendingReply(false);
     }
   };
 
@@ -425,48 +493,101 @@ export function AdminDashboardView({
   };
 
   const selectedOddsMatch = matches.find((m) => m.id === oddsMatchId);
+  const pendingDepositsCount = deposits.filter((d) => d.status === 'pending').length;
+
+  const filteredDeposits = deposits.filter((d) =>
+    depositFilter === 'all' ? true : d.status === depositFilter
+  );
+
+  // Build unique user conversations ordered by latest message
+  const conversations = (() => {
+    const map = new Map<
+      number,
+      {
+        userId: number;
+        userName: string;
+        userEmail: string;
+        userBalance: number;
+        lastMessage: string;
+        lastAt: string;
+        items: ContactMessageItem[];
+      }
+    >();
+    const chronological = [...messages].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    for (const m of chronological) {
+      const existing = map.get(m.userId);
+      if (existing) {
+        existing.items.push(m);
+        existing.lastMessage = m.message;
+        existing.lastAt = m.createdAt;
+      } else {
+        map.set(m.userId, {
+          userId: m.userId,
+          userName: m.userName || `Joueur #${m.userId}`,
+          userEmail: m.userEmail || '',
+          userBalance: m.userBalance ?? 0,
+          lastMessage: m.message,
+          lastAt: m.createdAt,
+          items: [m],
+        });
+      }
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime()
+    );
+  })();
+
+  const activeConversation =
+    conversations.find((c) => c.userId === selectedChatUserId) || conversations[0] || null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-[#f5b800]">SPORTZONE Admin Console</h1>
+          <h1 className="font-display text-2xl font-bold text-[#f5b800]">
+            Console Admin · Gestion Temps Réel
+          </h1>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Logged in as {user.email} · Manage users, credit DT balances, inspect winnings (Gain), and live matches
+            {user.email} · Les paris sont désactivés pour l’Admin — validez les recharges (Tickets / D17) et répondez aux joueurs.
           </p>
+        </div>
+        <div className="rounded-lg border border-[#f5b800]/35 bg-[#1b1912] px-3.5 py-2 text-xs font-semibold text-[#f5b800]">
+          {pendingDepositsCount} recharge(s) en attente
         </div>
       </div>
 
       {/* KPI Strip */}
       {overview && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-4">
-            <span className="text-xs text-zinc-400">Total Users</span>
+          <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-4">
+            <span className="text-xs text-zinc-400">Joueurs</span>
             <p className="font-mono-tabular text-xl font-bold text-white mt-1">
               {overview.stats.totalUsers}
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-4">
-            <span className="text-xs text-zinc-400">Real Matches</span>
+          <div className="rounded-xl border border-amber-500/35 bg-[#18191d] p-4">
+            <span className="text-xs text-amber-300">Recharges en attente</span>
+            <p className="font-mono-tabular text-xl font-bold text-[#f5b800] mt-1">
+              {pendingDepositsCount}
+            </p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-4">
+            <span className="text-xs text-zinc-400">Messages reçus</span>
             <p className="font-mono-tabular text-xl font-bold text-white mt-1">
-              {overview.stats.totalMatches}
+              {conversations.length}
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-4">
-            <span className="text-xs text-zinc-400">Live Now</span>
-            <p className="font-mono-tabular text-xl font-bold text-[#dc2626] mt-1">
-              {overview.stats.liveMatches}
-            </p>
-          </div>
-          <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-4">
-            <span className="text-xs text-zinc-400">Total Bets</span>
+          <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-4">
+            <span className="text-xs text-zinc-400">Total Paris</span>
             <p className="font-mono-tabular text-xl font-bold text-[#f5b800] mt-1">
               {overview.stats.totalVirtualBets}
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-4 col-span-2 lg:col-span-1">
-            <span className="text-xs text-zinc-400">Total Staked</span>
+          <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-4 col-span-2 lg:col-span-1">
+            <span className="text-xs text-zinc-400">Volume Misé</span>
             <p className="font-mono-tabular text-xl font-bold text-emerald-400 mt-1">
               {overview.stats.totalVirtualVolume.toFixed(2)} DT
             </p>
@@ -475,18 +596,24 @@ export function AdminDashboardView({
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-1 p-1 bg-[#18181b] border border-zinc-800 rounded-lg w-fit">
+      <div className="flex flex-wrap items-center gap-1 p-1 bg-[#18191d] border border-zinc-800 rounded-lg w-fit">
         {(
           [
             {
-              id: 'users',
-              label: 'Users, Credits & Winnings (Gain)',
-              badge: deposits.filter((d) => d.transactionType === 'deposit_pending').length,
+              id: 'deposits',
+              label: 'Recharges (Tickets & D17)',
+              badge: pendingDepositsCount,
             },
-            { id: 'matches', label: 'Matches & Scores', badge: 0 },
-            { id: 'odds', label: 'Odds Editor', badge: 0 },
-            { id: 'catalog', label: 'Sports & Leagues', badge: 0 },
-            { id: 'activity', label: 'Bets & Audit Log', badge: 0 },
+            {
+              id: 'messages',
+              label: 'Messages Joueurs',
+              badge: conversations.length,
+            },
+            { id: 'users', label: 'Joueurs & Soldes', badge: 0 },
+            { id: 'matches', label: 'Matchs & Scores', badge: 0 },
+            { id: 'odds', label: 'Cotes', badge: 0 },
+            { id: 'catalog', label: 'Sports & Ligues', badge: 0 },
+            { id: 'activity', label: 'Activité', badge: 0 },
           ] as const
         ).map((t) => (
           <button
@@ -501,7 +628,11 @@ export function AdminDashboardView({
           >
             <span>{t.label}</span>
             {t.badge > 0 && (
-              <span className="rounded bg-[#dc2626] px-1.5 py-0.5 text-[10px] font-mono-tabular font-bold text-white">
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] font-mono-tabular font-bold ${
+                  t.id === 'deposits' ? 'bg-[#dc2626] text-white' : 'bg-zinc-800 text-zinc-200'
+                }`}
+              >
                 {t.badge}
               </span>
             )}
@@ -513,83 +644,340 @@ export function AdminDashboardView({
         <div className="h-64 rounded-xl bg-zinc-900 border border-zinc-800 animate-pulse" />
       ) : (
         <>
-          {/* Tab 1: Users Search, List, Credit Top-Up & Gain Inspector */}
-          {activeTab === 'users' && overview && (
-            <div className="space-y-5">
-              {/* Real-Time Deposit Requests Queue */}
-              {deposits.length > 0 && (
-                <div className="rounded-xl border border-[#f5b800]/40 bg-[#18181b] overflow-hidden">
-                  <div className="px-4 py-3 border-b border-zinc-800 bg-[#141416] flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-bold text-white">
-                      <ArrowDownCircle className="w-4 h-4 text-[#f5b800]" />
-                      <span>Deposit Requests (Real-Time)</span>
-                    </div>
-                    <span className="text-xs font-mono-tabular text-[#f5b800]">
-                      {deposits.filter((d) => d.transactionType === 'deposit_pending').length} pending
-                    </span>
-                  </div>
-                  <div className="divide-y divide-zinc-800/80 max-h-64 overflow-y-auto">
-                    {deposits.slice(0, 15).map((dep) => {
-                      const isPending = dep.transactionType === 'deposit_pending';
-                      const isApproved = dep.transactionType === 'deposit_approved';
-                      const busy = processingDepositId === dep.id;
-                      return (
-                        <div
-                          key={dep.id}
-                          className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                        >
-                          <div className="min-w-0 space-y-0.5">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-white">{dep.username}</span>
-                              <span className="text-zinc-400 truncate">({dep.email})</span>
-                              <span className="font-mono-tabular font-extrabold text-[#f5b800]">
-                                +{dep.amount.toFixed(2)} DT
-                              </span>
+          {/* Tab 0: Real-Time Deposits Queue (Tickets + D17 with Screenshots) */}
+          {activeTab === 'deposits' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[#18191d] border border-zinc-800">
+                  {(
+                    [
+                      { id: 'all', label: `Toutes (${deposits.length})` },
+                      { id: 'pending', label: `En attente (${pendingDepositsCount})` },
+                      {
+                        id: 'approved',
+                        label: `Acceptées (${deposits.filter((d) => d.status === 'approved').length})`,
+                      },
+                      {
+                        id: 'rejected',
+                        label: `Refusées (${deposits.filter((d) => d.status === 'rejected').length})`,
+                      },
+                    ] as const
+                  ).map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setDepositFilter(f.id)}
+                      className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                        depositFilter === f.id
+                          ? 'bg-[#f5b800] text-[#111111]'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredDeposits.length === 0 ? (
+                <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-10 text-center space-y-2">
+                  <ArrowDownCircle className="w-8 h-8 text-zinc-600 mx-auto" />
+                  <p className="text-sm font-semibold text-zinc-300">
+                    Aucune demande de recharge dans cette catégorie
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    Dès qu’un joueur envoie des tickets Ooredoo/Orange/Telecom ou une capture D17, elle apparaît ici en temps réel.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredDeposits.map((dep) => {
+                    const isPending = dep.status === 'pending';
+                    const isApproved = dep.status === 'approved';
+                    const busy = processingDepositId === dep.id;
+                    return (
+                      <div
+                        key={dep.id}
+                        className={`rounded-xl border bg-[#18191d] p-4 space-y-3 ${
+                          isPending ? 'border-[#f5b800]/50' : 'border-zinc-800'
+                        }`}
+                      >
+                        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                          <div className="flex items-start gap-3 min-w-0">
+                            <OperatorBadge operator={dep.operator} size="md" />
+                            <div className="min-w-0 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className="font-bold text-white text-sm">
+                                  {dep.username || `User #${dep.userId}`}
+                                </span>
+                                {dep.email && <span className="text-zinc-400">({dep.email})</span>}
+                                <span className="font-mono-tabular font-extrabold text-[#f5b800] text-sm">
+                                  +{dep.amount.toFixed(2)} DT
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-mono-tabular text-zinc-500">
+                                Demande #{dep.id} · {dep.operator} ({dep.method}) ·{' '}
+                                {new Date(dep.createdAt).toLocaleString()}
+                              </p>
+
+                              {dep.method === 'tickets' && dep.ticketCodes.length > 0 && (
+                                <div className="pt-1 space-y-1">
+                                  <p className="text-[11px] font-semibold text-zinc-300">
+                                    Codes Tickets ({dep.ticketCodes.length} × 2.00 DT) :
+                                  </p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {dep.ticketCodes.map((code, i) => (
+                                      <span
+                                        key={i}
+                                        className="rounded-md border border-zinc-700 bg-[#111215] px-2.5 py-1 font-mono-tabular text-xs font-bold text-white select-all"
+                                      >
+                                        {code}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {dep.method === 'D17' && (
+                                <div className="pt-1 space-y-1.5 text-xs">
+                                  <p className="text-zinc-300 font-mono-tabular">
+                                    Numéro D17 du joueur :{' '}
+                                    <strong className="text-[#f5b800] select-all">
+                                      {dep.phoneNumber || 'Non fourni'}
+                                    </strong>
+                                  </p>
+                                </div>
+                              )}
+
+                              {dep.note && (
+                                <p className="text-xs text-zinc-400">Note joueur : {dep.note}</p>
+                              )}
                             </div>
-                            <p className="text-zinc-300 truncate">{dep.description}</p>
-                            <p className="text-[11px] font-mono-tabular text-zinc-500">
-                              {new Date(dep.createdAt).toLocaleString()}
-                            </p>
                           </div>
 
-                          {isPending ? (
+                          {/* D17 Screenshot Thumbnail Preview */}
+                          {dep.screenshotData && (
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setPreviewScreenshot(dep.screenshotData!)}
+                                className="group relative rounded-xl overflow-hidden border border-zinc-700 hover:border-[#f5b800] w-24 h-24 shrink-0 bg-black"
+                                title="Agrandir la capture d'écran D17"
+                              >
+                                <img
+                                  src={dep.screenshotData}
+                                  alt="Capture D17"
+                                  className="w-full h-full object-cover"
+                                />
+                                <span className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-white transition-opacity">
+                                  <ZoomIn className="w-4 h-4" />
+                                  <span>Agrandir</span>
+                                </span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {isPending ? (
+                          <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <input
+                              type="text"
+                              value={depositNotes[dep.id] || ''}
+                              onChange={(e) =>
+                                setDepositNotes((prev) => ({ ...prev, [dep.id]: e.target.value }))
+                              }
+                              placeholder="Note optionnelle (ex: Code vérifié, Reçu D17 invalide...)"
+                              className="flex-1 rounded-lg border border-zinc-700 bg-[#111215] px-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
+                            />
                             <div className="flex items-center gap-2 shrink-0">
                               <button
                                 type="button"
                                 disabled={busy}
                                 onClick={() => handleApproveDeposit(dep.id, dep.userId)}
-                                className="inline-flex items-center gap-1 rounded-md bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-[#09100b] font-bold px-3 py-1.5 text-xs"
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-[#09100b] font-bold px-4 py-2 text-xs"
                               >
-                                <Check className="w-3.5 h-3.5" />
-                                <span>{busy ? '...' : 'Approve & Credit'}</span>
+                                <Check className="w-4 h-4" />
+                                <span>{busy ? '...' : `Accepter (+${dep.amount.toFixed(2)} DT)`}</span>
                               </button>
                               <button
                                 type="button"
                                 disabled={busy}
                                 onClick={() => handleRejectDeposit(dep.id)}
-                                className="inline-flex items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 text-rose-300 font-semibold px-3 py-1.5 text-xs"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 text-rose-300 font-semibold px-4 py-2 text-xs"
                               >
-                                <X className="w-3.5 h-3.5" />
-                                <span>Reject</span>
+                                <X className="w-4 h-4" />
+                                <span>Refuser</span>
                               </button>
                             </div>
-                          ) : (
+                          </div>
+                        ) : (
+                          <div className="pt-2 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="text-zinc-400">
+                              {dep.adminNote ? `Note : ${dep.adminNote}` : ''}
+                            </span>
                             <span
-                              className={`rounded px-2.5 py-1 text-[11px] font-bold uppercase shrink-0 ${
+                              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-bold uppercase ${
                                 isApproved
                                   ? 'bg-emerald-500/20 text-emerald-400'
                                   : 'bg-rose-500/20 text-rose-400'
                               }`}
                             >
-                              {isApproved ? 'Approved' : 'Rejected'}
+                              {isApproved ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Accepté</span>
+                                </>
+                              ) : (
+                                <>
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  <span>Refusé</span>
+                                </>
+                              )}
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab: Real-Time User Contact Messages */}
+          {activeTab === 'messages' && (
+            <div className="grid lg:grid-cols-[280px_1fr] gap-4 items-start">
+              <div className="rounded-xl border border-zinc-800 bg-[#18191d] overflow-hidden">
+                <div className="px-4 py-3 border-b border-zinc-800 bg-[#121316] flex items-center gap-2 text-xs font-bold text-white uppercase">
+                  <MessageCircle className="w-4 h-4 text-[#f5b800]" />
+                  <span>Conversations ({conversations.length})</span>
+                </div>
+                {conversations.length === 0 ? (
+                  <p className="p-6 text-center text-xs text-zinc-500">
+                    Aucun message reçu pour le moment.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-zinc-800/80 max-h-[480px] overflow-y-auto">
+                    {conversations.map((conv) => {
+                      const active = activeConversation?.userId === conv.userId;
+                      return (
+                        <button
+                          key={conv.userId}
+                          type="button"
+                          onClick={() => setSelectedChatUserId(conv.userId)}
+                          className={`w-full text-left p-3.5 space-y-1 transition-colors ${
+                            active ? 'bg-[#f5b800]/15' : 'hover:bg-zinc-900/60'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 text-xs">
+                            <span className="font-bold text-white truncate">{conv.userName}</span>
+                            <span className="font-mono-tabular text-[#f5b800] font-bold shrink-0">
+                              {conv.userBalance.toFixed(2)} DT
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 truncate">{conv.lastMessage}</p>
+                        </button>
                       );
                     })}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              <div className="rounded-xl border border-zinc-800 bg-[#18191d] overflow-hidden flex flex-col min-h-[460px]">
+                {!activeConversation ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-2">
+                    <Clock className="w-8 h-8 text-zinc-600" />
+                    <p className="text-sm font-semibold text-zinc-300">
+                      En attente de messages des joueurs
+                    </p>
+                    <p className="text-xs text-zinc-500 max-w-sm">
+                      Les joueurs peuvent vous contacter depuis la page Recharger pour envoyer leur argent ou demander assistance en temps réel.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="px-4 py-3 border-b border-zinc-800 bg-[#121316] flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-xs">
+                        <p className="font-bold text-white text-sm">{activeConversation.userName}</p>
+                        <p className="text-zinc-400">{activeConversation.userEmail}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveTab('users');
+                          handleInspectUser(activeConversation.userId);
+                        }}
+                        className="rounded-lg border border-zinc-700 hover:border-[#f5b800] px-3 py-1.5 text-xs font-semibold text-[#f5b800]"
+                      >
+                        Inspecter / Créditer ({activeConversation.userBalance.toFixed(2)} DT)
+                      </button>
+                    </div>
+
+                    <div className="flex-1 p-4 space-y-2.5 max-h-[340px] overflow-y-auto bg-[#111215]">
+                      {activeConversation.items.map((msg) => {
+                        const isAdmin = msg.senderRole === 'admin';
+                        return (
+                          <div
+                            key={msg.id}
+                            className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
+                          >
+                            <div
+                              className={`max-w-[82%] rounded-xl px-3.5 py-2 text-xs space-y-1 ${
+                                isAdmin
+                                  ? 'bg-[#f5b800] text-[#111111] font-medium'
+                                  : 'bg-[#1f2127] border border-zinc-700 text-zinc-100'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 font-bold">
+                                <span>{isAdmin ? 'Vous (Admin)' : msg.senderName}</span>
+                                <span className="font-mono-tabular">
+                                  {new Date(msg.createdAt).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                              <p className="whitespace-pre-wrap break-words">{msg.message}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <form
+                      onSubmit={handleSendAdminReply}
+                      className="p-3 border-t border-zinc-800 bg-[#141519] flex items-center gap-2"
+                    >
+                      <input
+                        type="text"
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        placeholder={`Répondre à ${activeConversation.userName} en temps réel...`}
+                        className="flex-1 rounded-lg border border-zinc-700 bg-[#111215] px-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={sendingReply || !replyText.trim()}
+                        onClick={() => {
+                          if (!selectedChatUserId) {
+                            setSelectedChatUserId(activeConversation.userId);
+                          }
+                        }}
+                        className="h-9 px-4 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] disabled:bg-zinc-800 disabled:text-zinc-500 text-[#111111] font-bold text-xs inline-flex items-center gap-1.5 shrink-0"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Envoyer</span>
+                      </button>
+                    </form>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tab 1: Users Search, List, Credit Top-Up & Gain Inspector */}
+          {activeTab === 'users' && overview && (
+            <div className="space-y-5">
 
               {/* Search Bar */}
               <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1189,6 +1577,33 @@ export function AdminDashboardView({
             </div>
           )}
         </>
+      )}
+
+      {/* Full-Size Screenshot Lightbox for D17 Receipts */}
+      {previewScreenshot && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
+          onClick={() => setPreviewScreenshot(null)}
+        >
+          <div
+            className="relative max-w-xl w-full rounded-xl bg-[#18191d] border border-zinc-700 p-2.5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setPreviewScreenshot(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-[#f5b800] text-[#111111] flex items-center justify-center shadow-lg font-bold"
+              aria-label="Fermer l'aperçu"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <img
+              src={previewScreenshot}
+              alt="Capture D17"
+              className="w-full max-h-[82vh] object-contain rounded-lg"
+            />
+          </div>
+        </div>
       )}
     </div>
   );

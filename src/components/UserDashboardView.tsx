@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ArrowDownCircle,
   Calendar,
   Check,
+  CheckCircle2,
+  Clock,
   Filter,
   History,
   LogOut,
+  MessageCircle,
   RefreshCw,
   RotateCcw,
   Trophy,
   User as UserIcon,
   Wallet,
+  XCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSlip } from '../context/SlipContext';
@@ -18,12 +21,14 @@ import { useToast } from '../context/ToastContext';
 import { apiFetch } from '../lib/api';
 import {
   AppRoute,
+  DepositRequestItem,
   MatchItem,
   SlipSelection,
   SportItem,
   TransactionItem,
   VirtualBetItem,
 } from '../types/sportzone';
+import { D17Logo, OoredooLogo, OperatorBadge, OrangeLogo, TunisieTelecomLogo } from './OperatorLogos';
 
 interface UserDashboardViewProps {
   tab: 'dashboard' | 'history' | 'profile';
@@ -57,6 +62,7 @@ export function UserDashboardView({
 
   const [bets, setBets] = useState<VirtualBetItem[]>([]);
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
+  const [deposits, setDeposits] = useState<DepositRequestItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -68,11 +74,6 @@ export function UserDashboardView({
   const [favSports, setFavSports] = useState<string[]>(user?.favoriteSports || []);
   const [favTeams, setFavTeams] = useState<string[]>(user?.favoriteTeams || []);
   const [savingProfile, setSavingProfile] = useState(false);
-
-  const [depositAmount, setDepositAmount] = useState('50');
-  const [depositMethod, setDepositMethod] = useState<'D17' | 'Flouci' | 'Bank Transfer' | 'Cash'>('D17');
-  const [depositRef, setDepositRef] = useState('');
-  const [submittingDeposit, setSubmittingDeposit] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -91,12 +92,14 @@ export function UserDashboardView({
       if (fromDate) params.set('from', fromDate);
       if (toDate) params.set('to', toDate);
 
-      const [betRes, txRes] = await Promise.all([
+      const [betRes, txRes, depRes] = await Promise.all([
         apiFetch<{ bets: VirtualBetItem[] }>(`/api/bets/history?${params.toString()}`),
         apiFetch<{ transactions: TransactionItem[] }>('/api/transactions'),
+        apiFetch<{ deposits: DepositRequestItem[] }>('/api/deposits/mine'),
       ]);
       setBets(betRes.bets);
       setTransactions(txRes.transactions);
+      setDeposits(depRes.deposits);
     } catch (err: any) {
       if (!silent) {
         showToast(err?.message || 'Failed to load account records.', 'error');
@@ -110,14 +113,18 @@ export function UserDashboardView({
     loadData();
   }, [loadData]);
 
-  // Real-time refresh when balance updates via SSE or settlement
+  // Real-time refresh when balance or deposit updates via SSE
   useEffect(() => {
     if (!user?.id) return;
     const onBalanceEvent = () => {
       loadData(true);
     };
     window.addEventListener('sportzone:balance_updated', onBalanceEvent);
-    return () => window.removeEventListener('sportzone:balance_updated', onBalanceEvent);
+    window.addEventListener('sportzone:deposit_updated', onBalanceEvent);
+    return () => {
+      window.removeEventListener('sportzone:balance_updated', onBalanceEvent);
+      window.removeEventListener('sportzone:deposit_updated', onBalanceEvent);
+    };
   }, [user?.id, loadData]);
 
   useEffect(() => {
@@ -125,38 +132,6 @@ export function UserDashboardView({
       loadData(true);
     }
   }, [user?.virtualBalance, user?.id, loadData]);
-
-  const handleSubmitDeposit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const amt = Number(depositAmount);
-    if (!Number.isFinite(amt) || amt < 1) {
-      showToast('Enter a valid deposit amount (min 1.00 DT).', 'error');
-      return;
-    }
-    if (depositRef.trim().length < 3) {
-      showToast('Enter your transfer / receipt reference (min 3 chars).', 'error');
-      return;
-    }
-
-    setSubmittingDeposit(true);
-    try {
-      await apiFetch('/api/deposits', {
-        method: 'POST',
-        body: JSON.stringify({
-          amount: amt,
-          method: depositMethod,
-          reference: depositRef.trim(),
-        }),
-      });
-      setDepositRef('');
-      await loadData(true);
-      showToast(`Deposit request of ${amt.toFixed(2)} DT sent. Your balance updates in real time once validated.`, 'success');
-    } catch (err: any) {
-      showToast(err?.message || 'Unable to submit deposit request.', 'error');
-    } finally {
-      setSubmittingDeposit(false);
-    }
-  };
 
   const handleManualRefresh = async () => {
     setRefreshing(true);
@@ -323,7 +298,7 @@ export function UserDashboardView({
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1 p-1 bg-[#1a1a1d] border border-zinc-800 rounded-md">
+        <div className="flex flex-wrap items-center gap-1 p-1 bg-[#18191d] border border-zinc-800 rounded-lg">
           <button
             type="button"
             onClick={() => onNavigate('dashboard')}
@@ -333,7 +308,15 @@ export function UserDashboardView({
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            Overview
+            Aperçu
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('recharge')}
+            className="px-3.5 py-1.5 rounded text-xs font-semibold text-[#f5b800] hover:bg-[#f5b800]/10 transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
+          >
+            <Wallet className="w-3.5 h-3.5" />
+            <span>Recharger / Contact</span>
           </button>
           <button
             type="button"
@@ -344,7 +327,7 @@ export function UserDashboardView({
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            My Bets
+            Mes Paris
           </button>
           <button
             type="button"
@@ -355,7 +338,7 @@ export function UserDashboardView({
                 : 'text-zinc-400 hover:text-white'
             }`}
           >
-            Profile & Favorites
+            Profil
           </button>
         </div>
 
@@ -364,7 +347,7 @@ export function UserDashboardView({
           onClick={() => onNavigate('promotions')}
           className="text-xs font-semibold text-[#f5b800] hover:underline"
         >
-          Sports Bonus & Rewards →
+          Bonus & Récompenses →
         </button>
       </div>
 
@@ -410,95 +393,104 @@ export function UserDashboardView({
             </div>
           </div>
 
-          {/* Real-Time Deposit (DT) Request Card */}
-          <form
-            onSubmit={handleSubmitDeposit}
-            className="rounded-md border border-[#f5b800]/35 bg-[#17171a] p-4 space-y-3"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <ArrowDownCircle className="w-4 h-4 text-[#f5b800]" />
-                <h2 className="font-display text-sm font-bold text-white uppercase">
-                  Deposit (DT) · Real-Time Sync
-                </h2>
+          {/* Recharge & Contact Admin Card with Operator Logos & Real-Time Status */}
+          {user.role !== 'admin' && (
+            <div className="rounded-xl border border-[#f5b800]/35 bg-[#18191d] p-4 sm:p-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <h2 className="font-display text-base font-bold text-white uppercase flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-[#f5b800]" />
+                    <span>Recharger mon compte (Min 5.00 DT pour parier)</span>
+                  </h2>
+                  <p className="text-xs text-zinc-400">
+                    Tickets Ooredoo, Orange, Tunisie Telecom (2.00 DT / ticket) ou transfert D17 avec capture d’écran.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('recharge')}
+                    className="rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2 text-xs inline-flex items-center gap-1.5"
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                    <span>Recharger maintenant</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('recharge')}
+                    className="rounded-lg border border-zinc-700 hover:border-[#f5b800] text-zinc-200 font-semibold px-3.5 py-2 text-xs inline-flex items-center gap-1.5"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-[#f5b800]" />
+                    <span>Contacter l’Admin</span>
+                  </button>
+                </div>
               </div>
-              <span className="text-[11px] font-mono-tabular text-emerald-400">
-                Auto-sync enabled
-              </span>
-            </div>
 
-            <div className="flex flex-wrap gap-1.5">
-              {[20, 50, 100, 200, 500].map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setDepositAmount(String(preset))}
-                  className={`px-3 py-1 rounded text-xs font-mono-tabular font-bold border transition-colors ${
-                    Number(depositAmount) === preset
-                      ? 'border-[#f5b800] bg-[#f5b800]/20 text-[#f5b800]'
-                      : 'border-zinc-700 bg-[#121214] text-zinc-300 hover:border-zinc-500'
-                  }`}
-                >
-                  {preset} DT
-                </button>
-              ))}
-            </div>
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <OoredooLogo className="h-8 w-auto" />
+                <OrangeLogo className="h-8 w-auto" />
+                <TunisieTelecomLogo className="h-8 w-auto" />
+                <D17Logo className="h-8 w-auto" />
+              </div>
 
-            <div className="grid sm:grid-cols-[120px_150px_1fr_auto] gap-2.5">
-              <input
-                type="number"
-                min="1"
-                step="0.5"
-                required
-                value={depositAmount}
-                onChange={(e) => setDepositAmount(e.target.value)}
-                placeholder="Amount DT"
-                aria-label="Deposit amount in DT"
-                className="rounded-md border border-zinc-700 bg-[#121214] px-3 py-2 text-xs font-mono-tabular text-white focus:border-[#f5b800] focus:outline-none"
-              />
-              <select
-                value={depositMethod}
-                onChange={(e) => setDepositMethod(e.target.value as 'D17' | 'Flouci' | 'Bank Transfer' | 'Cash')}
-                aria-label="Deposit method"
-                className="rounded-md border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white focus:border-[#f5b800] focus:outline-none"
-              >
-                <option value="D17">D17</option>
-                <option value="Flouci">Flouci</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Cash">Cash Point</option>
-              </select>
-              <input
-                type="text"
-                required
-                value={depositRef}
-                onChange={(e) => setDepositRef(e.target.value)}
-                placeholder="Transfer reference / receipt ID (e.g. D17-84920)"
-                aria-label="Deposit reference"
-                className="rounded-md border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={submittingDeposit}
-                className="rounded-md bg-[#f5b800] hover:bg-[#fbbf24] disabled:opacity-60 text-[#111111] font-bold px-4 py-2 text-xs whitespace-nowrap transition-colors"
-              >
-                {submittingDeposit ? 'Sending...' : 'Submit Deposit'}
-              </button>
-            </div>
-            <p className="text-[11px] text-zinc-400">
-              Your request appears instantly in the Admin queue and credits your Cash balance in real time upon approval.
-            </p>
-          </form>
+              {deposits.length > 0 && (
+                <div className="rounded-lg border border-zinc-800 bg-[#111215] divide-y divide-zinc-800/80">
+                  {deposits.slice(0, 5).map((dep) => {
+                    const isPending = dep.status === 'pending';
+                    const isApproved = dep.status === 'approved';
+                    return (
+                      <div
+                        key={dep.id}
+                        className="px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <OperatorBadge operator={dep.operator} size="sm" />
+                          <div>
+                            <span className="font-bold text-white">{dep.operator}</span>
+                            <span className="font-mono-tabular font-bold text-[#f5b800] ml-2">
+                              +{dep.amount.toFixed(2)} DT
+                            </span>
+                            <span className="block text-[11px] text-zinc-500 font-mono-tabular">
+                              {new Date(dep.createdAt).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
 
-          <div className="rounded-md border border-zinc-800 bg-[#17171a] overflow-hidden">
-            <div className="px-4 py-3 border-b border-zinc-800 bg-[#141416] flex items-center justify-between">
+                        {isPending ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-2.5 py-1 text-[11px] font-bold text-amber-300">
+                            <Clock className="w-3 h-3 animate-pulse" />
+                            <span>En cours de traitement</span>
+                          </span>
+                        ) : isApproved ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-2.5 py-1 text-[11px] font-bold text-emerald-400">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>Accepté</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded bg-rose-500/15 px-2.5 py-1 text-[11px] font-bold text-rose-400">
+                            <XCircle className="w-3 h-3" />
+                            <span>Refusé</span>
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="rounded-xl border border-zinc-800 bg-[#18191d] overflow-hidden">
+            <div className="px-4 py-3 border-b border-zinc-800 bg-[#121316] flex items-center justify-between">
               <h2 className="font-display text-sm font-bold text-white uppercase">Transactions (DT)</h2>
               <span className="text-[11px] text-zinc-400">
-                New accounts start at 0.00 DT
+                Historique en temps réel
               </span>
             </div>
             {transactions.length === 0 ? (
               <div className="p-6 text-center text-sm text-zinc-400">
-                No credit or ticket activity yet. Submit a deposit request above or contact Admin to fund your DT balance.
+                Aucune transaction pour le moment. Rechargez votre compte via Tickets ou D17.
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -506,9 +498,9 @@ export function UserDashboardView({
                   <thead className="border-b border-zinc-800 text-zinc-400">
                     <tr>
                       <th className="px-4 py-2.5 font-medium">Description</th>
-                      <th className="px-4 py-2.5 font-medium">Status / Type</th>
+                      <th className="px-4 py-2.5 font-medium">Statut / Type</th>
                       <th className="px-4 py-2.5 font-medium">Date</th>
-                      <th className="px-4 py-2.5 font-medium text-right">Amount</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Montant</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/70">
@@ -521,16 +513,16 @@ export function UserDashboardView({
                           <td className="px-4 py-2.5 text-zinc-200">{tx.description}</td>
                           <td className="px-4 py-2.5 capitalize">
                             {isPending ? (
-                              <span className="rounded bg-[#f5b800]/20 text-[#f5b800] px-2 py-0.5 text-[11px] font-bold">
-                                Pending Deposit
+                              <span className="rounded bg-amber-500/20 text-amber-300 px-2 py-0.5 text-[11px] font-bold">
+                                En cours de traitement
                               </span>
                             ) : isApproved ? (
                               <span className="rounded bg-emerald-500/20 text-emerald-400 px-2 py-0.5 text-[11px] font-bold">
-                                Approved Deposit
+                                Accepté
                               </span>
                             ) : isRejected ? (
                               <span className="rounded bg-rose-500/20 text-rose-400 px-2 py-0.5 text-[11px] font-bold">
-                                Rejected Deposit
+                                Refusé
                               </span>
                             ) : (
                               <span className="text-zinc-400">{tx.transactionType.replace(/_/g, ' ')}</span>

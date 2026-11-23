@@ -73,8 +73,8 @@ export async function placeVirtualBet(input: PlaceBetInput) {
   const stakePerUnit = round2(Number(input.stake));
   const mode = input.mode === 'single' || input.mode === 'system' ? input.mode : 'multiple';
 
-  if (!Number.isFinite(stakePerUnit) || stakePerUnit < 0.2 || stakePerUnit > 100000) {
-    throw new Error('Stake must be between 0.20 DT and 100,000 DT.');
+  if (!Number.isFinite(stakePerUnit) || stakePerUnit < 5 || stakePerUnit > 100000) {
+    throw new Error('La mise minimum est de 5.00 DT (maximum 100,000 DT).');
   }
 
   const uniqueMarketIds = Array.from(new Set(input.marketIds.map(Number))).filter(
@@ -87,6 +87,14 @@ export async function placeVirtualBet(input: PlaceBetInput) {
   const idempKey = input.idempotencyKey?.trim() || null;
 
   return await db.transaction(async (tx) => {
+    const [bettor] = await tx.select().from(users).where(eq(users.id, input.userId)).limit(1);
+    if (!bettor) {
+      throw new Error('User account not found.');
+    }
+    if (bettor.role === 'admin') {
+      throw new Error('Admin accounts cannot place bets. Admins only approve deposits and manage the platform.');
+    }
+
     if (idempKey) {
       const existing = await tx
         .select()

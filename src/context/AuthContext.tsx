@@ -145,6 +145,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Ignore malformed SSE payload
         }
       });
+
+      es.addEventListener('deposit_updated', (ev) => {
+        try {
+          const payload = JSON.parse((ev as MessageEvent).data || '{}') as {
+            depositId?: number;
+            userId?: number;
+            status?: string;
+            amount?: number;
+            newBalance?: number;
+          };
+          if (payload.userId === user.id || user.role === 'admin') {
+            if (payload.userId === user.id && typeof payload.newBalance === 'number') {
+              setUser((prev) => (prev ? { ...prev, virtualBalance: payload.newBalance! } : prev));
+            }
+            refreshProfile();
+            window.dispatchEvent(new CustomEvent('sportzone:deposit_updated', { detail: payload }));
+          }
+        } catch {
+          // Ignore
+        }
+      });
+
+      es.addEventListener('deposit_requested', (ev) => {
+        try {
+          const payload = JSON.parse((ev as MessageEvent).data || '{}');
+          window.dispatchEvent(new CustomEvent('sportzone:deposit_requested', { detail: payload }));
+        } catch {
+          // Ignore
+        }
+      });
+
+      es.addEventListener('message_received', (ev) => {
+        try {
+          const payload = JSON.parse((ev as MessageEvent).data || '{}') as {
+            userId?: number;
+          };
+          if (payload.userId === user.id || user.role === 'admin') {
+            window.dispatchEvent(new CustomEvent('sportzone:message_received', { detail: payload }));
+          }
+        } catch {
+          // Ignore
+        }
+      });
     } catch {
       // EventSource not available
     }
@@ -159,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       es?.close();
       clearInterval(poll);
     };
-  }, [user?.id, refreshProfile]);
+  }, [user?.id, user?.role, refreshProfile]);
 
   return (
     <AuthContext.Provider

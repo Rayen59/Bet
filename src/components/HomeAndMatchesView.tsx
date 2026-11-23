@@ -1,28 +1,22 @@
 import React, { useMemo, useState } from 'react';
 import {
   Calendar,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsRight,
-  ChevronUp,
   CircleDot,
   Disc,
   Gamepad2,
-  Gift,
   Globe,
-  Home,
   LayoutGrid,
-  PlayCircle,
   Radio,
-  Receipt,
   Search,
-  Settings,
   ShieldCheck,
-  Star,
   Trophy,
+  Wallet,
   Zap,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { useSlip } from '../context/SlipContext';
 import { AppRoute, CompetitionItem, MatchItem, SportItem } from '../types/sportzone';
 import { TeamBadge } from './BrandLogo';
@@ -80,12 +74,12 @@ export function HomeAndMatchesView({
   onNavigate,
   onSelectMatch,
 }: HomeAndMatchesViewProps) {
+  const { user } = useAuth();
   const { toggleSelection, isSelected, getMatchSelections } = useSlip();
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'upcoming' | 'finished'>('all');
   const [selectedCompetition, setSelectedCompetition] = useState<string>('all');
   const [selectedSportFilter, setSelectedSportFilter] = useState<string>('all');
   const [selectedDateOffset, setSelectedDateOffset] = useState<number | 'all'>('all');
-  const [favOpen, setFavOpen] = useState(false);
   const [slideIdx, setSlideIdx] = useState(0);
 
   const dateTabs = useMemo(() => {
@@ -267,14 +261,14 @@ export function HomeAndMatchesView({
 
     return (
       <div className="space-y-3.5">
-        {/* 1. Slim Top Promo Banner matching 0cabe743 / 5f64d28e */}
-        <section className="relative h-20 sm:h-28 rounded-lg overflow-hidden bg-[#18181b]">
+        {/* 1. Slim Hero Banner + Quick Recharge Callout */}
+        <section className="relative h-24 sm:h-28 rounded-xl overflow-hidden border border-zinc-800 bg-[#18191d]">
           <img
             src={slide.image}
             alt={slide.title}
-            className="w-full h-full object-cover opacity-60 transition-all duration-300"
+            className="w-full h-full object-cover opacity-55 transition-all duration-300"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#0e0e10]/90 via-[#0e0e10]/65 to-[#0e0e10]/40" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0e0f12]/95 via-[#0e0f12]/70 to-[#0e0f12]/45" />
 
           <button
             type="button"
@@ -282,7 +276,7 @@ export function HomeAndMatchesView({
               setSlideIdx((prev) => (prev - 1 + CAROUSEL_SLIDES.length) % CAROUSEL_SLIDES.length)
             }
             aria-label="Previous banner"
-            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center"
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -291,7 +285,7 @@ export function HomeAndMatchesView({
             type="button"
             onClick={() => setSlideIdx((prev) => (prev + 1) % CAROUSEL_SLIDES.length)}
             aria-label="Next banner"
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center"
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/60 hover:bg-black/85 text-white flex items-center justify-center"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -305,59 +299,79 @@ export function HomeAndMatchesView({
               {slide.title.split(' ').slice(0, -1).join(' ')}{' '}
               <span className="text-[#f5b800]">{slide.title.split(' ').slice(-1)[0]}</span>
             </span>
-            <span className="text-[11px] sm:text-xs font-semibold text-zinc-200 mt-0.5 truncate max-w-full">
+            <span className="text-[11px] sm:text-xs font-medium text-zinc-200 mt-0.5 truncate max-w-full">
               {slide.subtitle}
             </span>
           </button>
         </section>
 
-        {/* 2. 5-Segment Icon Bar matching 0cabe743 */}
-        <div className="grid grid-cols-5 rounded-lg bg-[#222225] overflow-hidden">
-          <button
-            type="button"
-            onClick={() => onNavigate('home')}
-            className="flex items-center justify-center py-3 bg-[#2d2d31] text-[#f5b800]"
-            title="Home"
-          >
-            <Home className="w-5 h-5" />
-          </button>
+        {/* 2. Clean Single-Row Quick Sport + Recharge Strip */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+          {user?.role !== 'admin' && (
+            <button
+              type="button"
+              onClick={() => onNavigate('recharge')}
+              className="px-3.5 py-2 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-heading font-extrabold text-xs whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors"
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              <span>Recharger (Tickets / D17)</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onNavigate('live')}
-            className="flex items-center justify-center py-3 hover:bg-[#2d2d31] transition-colors"
-            title="Live Matches"
+            className="px-3.5 py-2 rounded-lg border border-zinc-800 bg-[#18191d] hover:border-[#e11d2e] text-xs font-bold text-white whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors"
           >
-            <span className="rounded bg-[#e11d2e] px-2.5 py-0.5 text-[11px] font-extrabold text-white tracking-wider uppercase">
-              LIVE
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('history')}
-            className="flex items-center justify-center py-3 text-white hover:text-[#f5b800] hover:bg-[#2d2d31] transition-colors"
-            title="My Bets"
-          >
-            <Receipt className="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('profile')}
-            className="flex items-center justify-center py-3 text-white hover:text-[#f5b800] hover:bg-[#2d2d31] transition-colors"
-            title="Settings & Profile"
-          >
-            <Settings className="w-5 h-5" />
+            <Radio className="w-3.5 h-3.5 text-[#e11d2e]" />
+            <span>Live ({liveMatches.length})</span>
           </button>
           <button
             type="button"
             onClick={() => onNavigate('sport-football')}
-            className="flex items-center justify-center py-3 font-heading text-xs font-extrabold text-white hover:text-[#f5b800] hover:bg-[#2d2d31] transition-colors"
+            className="px-3.5 py-2 rounded-lg border border-zinc-800 bg-[#18191d] hover:border-[#f5b800] text-xs font-semibold text-zinc-200 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors"
           >
-            A-Z
+            <Trophy className="w-3.5 h-3.5 text-[#f5b800]" />
+            <span>Football</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('sport-basketball')}
+            className="px-3.5 py-2 rounded-lg border border-zinc-800 bg-[#18191d] hover:border-[#f5b800] text-xs font-semibold text-zinc-200 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors"
+          >
+            <CircleDot className="w-3.5 h-3.5 text-amber-400" />
+            <span>Basketball</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('sport-tennis')}
+            className="px-3.5 py-2 rounded-lg border border-zinc-800 bg-[#18191d] hover:border-[#f5b800] text-xs font-semibold text-zinc-200 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors"
+          >
+            <Disc className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Tennis</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigate('sport-esports')}
+            className="px-3.5 py-2 rounded-lg border border-zinc-800 bg-[#18191d] hover:border-[#f5b800] text-xs font-semibold text-zinc-200 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors"
+          >
+            <Gamepad2 className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Esports</span>
           </button>
         </div>
 
-        {/* 3. Date Filter Pills matching 0cabe743 */}
+        {/* 3. Date Filter Pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
+          <button
+            type="button"
+            onClick={() => setSelectedDateOffset('all')}
+            className={`px-3.5 py-2 rounded-lg text-xs font-heading font-semibold whitespace-nowrap shrink-0 transition-colors ${
+              selectedDateOffset === 'all'
+                ? 'bg-[#2a2515] border border-[#f5b800] text-[#f5b800]'
+                : 'bg-[#18191d] border border-zinc-800 text-zinc-300 hover:text-white'
+            }`}
+          >
+            Tous les jours
+          </button>
           {dateTabs.map((d) => {
             const active = selectedDateOffset === d.offset;
             return (
@@ -365,10 +379,10 @@ export function HomeAndMatchesView({
                 key={d.offset}
                 type="button"
                 onClick={() => setSelectedDateOffset(active ? 'all' : d.offset)}
-                className={`px-4 py-2.5 rounded-lg text-xs font-heading whitespace-nowrap shrink-0 flex items-center gap-2 transition-colors ${
+                className={`px-3.5 py-2 rounded-lg text-xs font-heading whitespace-nowrap shrink-0 flex items-center gap-2 transition-colors ${
                   active
                     ? 'bg-[#2a2515] border border-[#f5b800] text-[#f5b800]'
-                    : 'bg-[#222225] text-zinc-300 hover:text-white'
+                    : 'bg-[#18191d] border border-zinc-800 text-zinc-300 hover:text-white'
                 }`}
               >
                 <span>{d.label}</span>
@@ -376,136 +390,14 @@ export function HomeAndMatchesView({
               </button>
             );
           })}
-          {selectedDateOffset !== 'all' && (
-            <button
-              type="button"
-              onClick={() => setSelectedDateOffset('all')}
-              className="px-3.5 py-2.5 rounded-lg bg-[#222225] text-xs font-semibold text-[#f5b800] whitespace-nowrap shrink-0"
-            >
-              All Days
-            </button>
-          )}
         </div>
 
-        {/* 4. FAVOURITES Full-Width Accordion matching 0cabe743 */}
-        <div className="rounded-lg bg-[#222225] overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setFavOpen(!favOpen)}
-            className="w-full px-4 py-3 flex items-center justify-between font-heading text-xs font-extrabold tracking-wider uppercase text-[#f5b800]"
-          >
-            <span className="inline-flex items-center gap-2.5">
-              <Star className="w-4 h-4 text-[#f5b800]" />
-              <span>FAVOURITES</span>
-            </span>
-            {favOpen ? (
-              <ChevronUp className="w-4 h-4 text-[#f5b800]" />
-            ) : (
-              <ChevronDown className="w-4 h-4 text-[#f5b800]" />
-            )}
-          </button>
-          {favOpen && (
-            <div className="px-4 pb-3.5 pt-2 border-t border-zinc-700/60 flex flex-wrap gap-2">
-              {competitions.filter((c) => c.featured).map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setSelectedCompetition(selectedCompetition === c.slug ? 'all' : c.slug)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                    selectedCompetition === c.slug
-                      ? 'bg-[#f5b800] text-[#111111]'
-                      : 'bg-[#141416] text-zinc-200 hover:text-white'
-                  }`}
-                >
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 5. Unboxed Quick-Access Icon Strip matching 0cabe743 */}
-        <div className="flex items-center justify-between gap-4 overflow-x-auto px-2 py-2.5 text-center">
-          <button
-            type="button"
-            onClick={() => onNavigate('history')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-white hover:text-[#f5b800] transition-colors shrink-0"
-          >
-            <Receipt className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">My Bets</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('live')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-white hover:text-[#f5b800] transition-colors shrink-0"
-          >
-            <PlayCircle className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">Live</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('live')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-white hover:text-[#f5b800] transition-colors shrink-0"
-          >
-            <Radio className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">Streaming</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('sport-football')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-white hover:text-[#f5b800] transition-colors shrink-0"
-          >
-            <Trophy className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">Soccer</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('sport-basketball')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-white hover:text-[#f5b800] transition-colors shrink-0"
-          >
-            <CircleDot className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">Basketball</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('sport-tennis')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-white hover:text-[#f5b800] transition-colors shrink-0"
-          >
-            <Disc className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">Tennis</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('sport-volleyball')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-white hover:text-[#f5b800] transition-colors shrink-0"
-          >
-            <Globe className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">Volleyball</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('sport-esports')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-white hover:text-[#f5b800] transition-colors shrink-0"
-          >
-            <Gamepad2 className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">Esports</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('promotions')}
-            className="flex flex-col items-center gap-2 min-w-[60px] text-[#f5b800] hover:text-[#fbbf24] transition-colors shrink-0"
-          >
-            <Gift className="w-7 h-7 stroke-[1.75]" />
-            <span className="text-xs font-medium whitespace-nowrap">Bonus</span>
-          </button>
-        </div>
-
-        {/* 6. Top Events Header + Horizontal Card Rail matching 0cabe743 100/100 */}
+        {/* 4. Top Events Header + Horizontal Card Rail */}
         <section className="space-y-3">
-          <div className="flex items-center justify-between rounded-lg bg-[#222225] px-4 py-3">
+          <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-[#18191d] px-4 py-3">
             <div className="flex items-center gap-2.5 font-heading text-sm font-bold text-[#f5b800]">
               <Calendar className="w-4 h-4" />
-              <span>Top Events</span>
+              <span>Top Événements</span>
             </div>
             <button
               type="button"
@@ -515,7 +407,7 @@ export function HomeAndMatchesView({
               <span className="rounded bg-[#e11d2e] px-1.5 py-0.5 text-[10px] font-extrabold text-white">
                 LIVE
               </span>
-              <span>{liveMatches.length} Live →</span>
+              <span>{liveMatches.length} en direct →</span>
             </button>
           </div>
 
@@ -666,23 +558,23 @@ export function HomeAndMatchesView({
           </div>
         </section>
 
-        {/* 7. Solid Gold Boosted Odds Full-Width Bar + Slate-Gradient Cards matching 0cabe743 100/100 */}
-        <section className="space-y-3">
-          <div className="rounded-lg bg-[#f5b800] text-[#111111] px-4 py-3 flex items-center justify-between font-heading font-extrabold text-sm">
-            <span className="inline-flex items-center gap-2">
-              <Zap className="w-4 h-4 fill-current" />
-              <span>Boosted Odds</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => onNavigate('live')}
-              className="text-xs font-bold hover:underline"
-            >
-              All Matches ({matches.length}) →
-            </button>
-          </div>
+        {/* 5. Solid Gold Boosted Odds (only shown when matches exist) */}
+        {boostedCardItems.length > 0 && (
+          <section className="space-y-3">
+            <div className="rounded-xl bg-[#f5b800] text-[#111111] px-4 py-2.5 flex items-center justify-between font-heading font-extrabold text-sm">
+              <span className="inline-flex items-center gap-2">
+                <Zap className="w-4 h-4 fill-current" />
+                <span>Cotes Boostées</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => onNavigate('live')}
+                className="text-xs font-bold hover:underline"
+              >
+                Tous les matchs ({matches.length}) →
+              </button>
+            </div>
 
-          {boostedCardItems.length > 0 && (
             <div className="flex gap-3 overflow-x-auto pb-1.5 snap-x">
               {boostedCardItems.map(({ match: m, market: mkt, baseOdd }) => {
                 const dt = new Date(m.startTime);
@@ -770,8 +662,8 @@ export function HomeAndMatchesView({
                 );
               })}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
         {/* 8. Quick League Tabs + Matchboard */}
         {leagueShortcuts.length > 0 && (

@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   applyBetBuilderSelection,
   checkCandidateCompatibility,
@@ -9,6 +9,7 @@ import {
   sanitizeMatchSelections,
 } from '../lib/betBuilder';
 import { SlipMode, SlipSelection } from '../types/sportzone';
+import { useAuth } from './AuthContext';
 import { useToast } from './ToastContext';
 
 interface BetReceipt {
@@ -84,20 +85,36 @@ function getCombinationProducts(odds: number[], k: number): number[] {
 }
 
 export function SlipProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const { showToast } = useToast();
   const [selections, setSelections] = useState<SlipSelection[]>([]);
   const selectionsRef = useRef<SlipSelection[]>(selections);
   selectionsRef.current = selections;
 
-  const [stake, setStakeState] = useState<number>(1);
+  const [stake, setStakeState] = useState<number>(5);
   const [slipMode, setSlipMode] = useState<SlipMode>('multiple');
   const [systemSize, setSystemSize] = useState<number>(2);
   const [lastReceipt, setLastReceipt] = useState<BetReceipt | null>(null);
   const [lastAutoCleaned, setLastAutoCleaned] = useState<string[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  useEffect(() => {
+    if (user?.role === 'admin' && selectionsRef.current.length > 0) {
+      selectionsRef.current = [];
+      setSelections([]);
+      setMobileOpen(false);
+    }
+  }, [user?.role]);
+
   const toggleSelection = useCallback(
     (sel: SlipSelection, options?: ToggleOptions) => {
+      if (user?.role === 'admin') {
+        showToast(
+          'Mode Admin : vous ne pouvez pas placer de paris. Gérez les recharges et messages dans la Console Admin.',
+          'info'
+        );
+        return;
+      }
       setLastReceipt(null);
       const prev = selectionsRef.current;
       const exactExists = prev.some((s) => s.marketId === sel.marketId);
@@ -134,18 +151,22 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
         const cleanedNames = removed.map((r) => `${r.item.selectionName} (${r.item.marketType})`);
         setLastAutoCleaned(cleanedNames);
         showToast(
-          `Illogical choice removed: ${removed.map((r) => r.item.selectionName).join(', ')}`,
+          `Choix illogique supprimé : ${removed.map((r) => r.item.selectionName).join(', ')}`,
           'info'
         );
       } else {
         setLastAutoCleaned([]);
       }
     },
-    [showToast]
+    [showToast, user?.role]
   );
 
   const addMultipleSelections = useCallback(
     (sels: SlipSelection[]) => {
+      if (user?.role === 'admin') {
+        showToast('Mode Admin : les paris sont désactivés pour l’administrateur.', 'info');
+        return;
+      }
       setLastReceipt(null);
       const byMatch = new Map<number, SlipSelection[]>();
       for (const s of sels) {
@@ -169,10 +190,10 @@ export function SlipProvider({ children }: { children: React.ReactNode }) {
       setSelections(cleanedAll);
       setLastAutoCleaned(removedNames);
       if (removedNames.length > 0) {
-        showToast(`Filtered out ${removedNames.length} illogical selection(s).`, 'info');
+        showToast(`${removedNames.length} choix incompatible(s) filtré(s).`, 'info');
       }
     },
-    [showToast]
+    [showToast, user?.role]
   );
 
   const removeSelection = useCallback((marketId: number) => {

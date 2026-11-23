@@ -1255,113 +1255,148 @@ export async function syncLiveSportsFeeds(): Promise<{ synced: number; updated: 
 async function ensureSchemaTables(): Promise<void> {
   const regCheck = await db.execute(sql`SELECT to_regclass('public.users') AS tbl`);
   const firstRow = (regCheck as any)?.rows?.[0];
-  if (firstRow?.tbl) return;
+  if (!firstRow?.tbl) {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id serial PRIMARY KEY,
+        uid text NOT NULL UNIQUE,
+        username text NOT NULL,
+        email text NOT NULL UNIQUE,
+        password_hash text,
+        virtual_balance double precision NOT NULL DEFAULT 0,
+        role text NOT NULL DEFAULT 'user',
+        favorite_teams text NOT NULL DEFAULT '[]',
+        favorite_sports text NOT NULL DEFAULT '[]',
+        reset_token text,
+        reset_token_expires timestamp,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS sports (
+        id serial PRIMARY KEY,
+        slug text NOT NULL UNIQUE,
+        name text NOT NULL,
+        icon text NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS competitions (
+        id serial PRIMARY KEY,
+        slug text NOT NULL UNIQUE,
+        name text NOT NULL,
+        sport_id integer NOT NULL REFERENCES sports(id),
+        country text NOT NULL,
+        featured boolean NOT NULL DEFAULT false
+      );
+      CREATE TABLE IF NOT EXISTS teams (
+        id serial PRIMARY KEY,
+        name text NOT NULL,
+        short_name text NOT NULL,
+        logo text NOT NULL,
+        sport_id integer NOT NULL REFERENCES sports(id)
+      );
+      CREATE TABLE IF NOT EXISTS matches (
+        id serial PRIMARY KEY,
+        external_id text UNIQUE,
+        sport_id integer NOT NULL REFERENCES sports(id),
+        competition_id integer NOT NULL REFERENCES competitions(id),
+        home_team_id integer NOT NULL REFERENCES teams(id),
+        away_team_id integer NOT NULL REFERENCES teams(id),
+        home_score integer NOT NULL DEFAULT 0,
+        away_score integer NOT NULL DEFAULT 0,
+        status text NOT NULL DEFAULT 'upcoming',
+        match_timer text NOT NULL DEFAULT '00:00',
+        start_time timestamp NOT NULL,
+        data_source text NOT NULL DEFAULT 'simulated',
+        featured boolean NOT NULL DEFAULT false,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS markets (
+        id serial PRIMARY KEY,
+        match_id integer NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+        market_type text NOT NULL,
+        selection_name text NOT NULL,
+        simulated_odds double precision NOT NULL,
+        active boolean NOT NULL DEFAULT true
+      );
+      CREATE TABLE IF NOT EXISTS virtual_bets (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id),
+        reference text NOT NULL UNIQUE,
+        idempotency_key text UNIQUE,
+        virtual_stake double precision NOT NULL,
+        combined_odds double precision NOT NULL,
+        potential_virtual_winnings double precision NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS virtual_bet_selections (
+        id serial PRIMARY KEY,
+        virtual_bet_id integer NOT NULL REFERENCES virtual_bets(id) ON DELETE CASCADE,
+        match_id integer NOT NULL REFERENCES matches(id),
+        market_id integer NOT NULL REFERENCES markets(id),
+        market_type text NOT NULL,
+        selection_name text NOT NULL,
+        simulated_odds double precision NOT NULL,
+        match_label text NOT NULL,
+        result text NOT NULL DEFAULT 'pending'
+      );
+      CREATE TABLE IF NOT EXISTS transactions (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id),
+        amount double precision NOT NULL,
+        transaction_type text NOT NULL,
+        description text NOT NULL,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id serial PRIMARY KEY,
+        admin_id integer NOT NULL REFERENCES users(id),
+        action text NOT NULL,
+        details text,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS promotions_claimed (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id),
+        promo_code text NOT NULL,
+        reward_credits double precision NOT NULL,
+        claimed_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+  }
 
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS users (
-      id serial PRIMARY KEY,
-      uid text NOT NULL UNIQUE,
-      username text NOT NULL,
-      email text NOT NULL UNIQUE,
-      password_hash text,
-      virtual_balance double precision NOT NULL DEFAULT 0,
-      role text NOT NULL DEFAULT 'user',
-      favorite_teams text NOT NULL DEFAULT '[]',
-      favorite_sports text NOT NULL DEFAULT '[]',
-      reset_token text,
-      reset_token_expires timestamp,
-      created_at timestamp DEFAULT now() NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sports (
-      id serial PRIMARY KEY,
-      slug text NOT NULL UNIQUE,
-      name text NOT NULL,
-      icon text NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS competitions (
-      id serial PRIMARY KEY,
-      slug text NOT NULL UNIQUE,
-      name text NOT NULL,
-      sport_id integer NOT NULL REFERENCES sports(id),
-      country text NOT NULL,
-      featured boolean NOT NULL DEFAULT false
-    );
-    CREATE TABLE IF NOT EXISTS teams (
-      id serial PRIMARY KEY,
-      name text NOT NULL,
-      short_name text NOT NULL,
-      logo text NOT NULL,
-      sport_id integer NOT NULL REFERENCES sports(id)
-    );
-    CREATE TABLE IF NOT EXISTS matches (
-      id serial PRIMARY KEY,
-      external_id text UNIQUE,
-      sport_id integer NOT NULL REFERENCES sports(id),
-      competition_id integer NOT NULL REFERENCES competitions(id),
-      home_team_id integer NOT NULL REFERENCES teams(id),
-      away_team_id integer NOT NULL REFERENCES teams(id),
-      home_score integer NOT NULL DEFAULT 0,
-      away_score integer NOT NULL DEFAULT 0,
-      status text NOT NULL DEFAULT 'upcoming',
-      match_timer text NOT NULL DEFAULT '00:00',
-      start_time timestamp NOT NULL,
-      data_source text NOT NULL DEFAULT 'simulated',
-      featured boolean NOT NULL DEFAULT false,
-      created_at timestamp DEFAULT now() NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS markets (
-      id serial PRIMARY KEY,
-      match_id integer NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-      market_type text NOT NULL,
-      selection_name text NOT NULL,
-      simulated_odds double precision NOT NULL,
-      active boolean NOT NULL DEFAULT true
-    );
-    CREATE TABLE IF NOT EXISTS virtual_bets (
-      id serial PRIMARY KEY,
-      user_id integer NOT NULL REFERENCES users(id),
-      reference text NOT NULL UNIQUE,
-      idempotency_key text UNIQUE,
-      virtual_stake double precision NOT NULL,
-      combined_odds double precision NOT NULL,
-      potential_virtual_winnings double precision NOT NULL,
-      status text NOT NULL DEFAULT 'pending',
-      created_at timestamp DEFAULT now() NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS virtual_bet_selections (
-      id serial PRIMARY KEY,
-      virtual_bet_id integer NOT NULL REFERENCES virtual_bets(id) ON DELETE CASCADE,
-      match_id integer NOT NULL REFERENCES matches(id),
-      market_id integer NOT NULL REFERENCES markets(id),
-      market_type text NOT NULL,
-      selection_name text NOT NULL,
-      simulated_odds double precision NOT NULL,
-      match_label text NOT NULL,
-      result text NOT NULL DEFAULT 'pending'
-    );
-    CREATE TABLE IF NOT EXISTS transactions (
-      id serial PRIMARY KEY,
-      user_id integer NOT NULL REFERENCES users(id),
-      amount double precision NOT NULL,
-      transaction_type text NOT NULL,
-      description text NOT NULL,
-      created_at timestamp DEFAULT now() NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS audit_logs (
-      id serial PRIMARY KEY,
-      admin_id integer NOT NULL REFERENCES users(id),
-      action text NOT NULL,
-      details text,
-      created_at timestamp DEFAULT now() NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS promotions_claimed (
-      id serial PRIMARY KEY,
-      user_id integer NOT NULL REFERENCES users(id),
-      promo_code text NOT NULL,
-      reward_credits double precision NOT NULL,
-      claimed_at timestamp DEFAULT now() NOT NULL
-    );
-  `);
+  const depCheck = await db.execute(sql`SELECT to_regclass('public.deposit_requests') AS tbl`);
+  const msgCheck = await db.execute(sql`SELECT to_regclass('public.contact_messages') AS tbl`);
+  const depExists = Boolean((depCheck as any)?.rows?.[0]?.tbl);
+  const msgExists = Boolean((msgCheck as any)?.rows?.[0]?.tbl);
+
+  if (!depExists || !msgExists) {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS deposit_requests (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id),
+        method text NOT NULL,
+        operator text NOT NULL,
+        amount double precision NOT NULL,
+        ticket_codes text NOT NULL DEFAULT '[]',
+        phone_number text,
+        screenshot_data text,
+        note text,
+        status text NOT NULL DEFAULT 'pending',
+        admin_note text,
+        processed_by integer,
+        created_at timestamp DEFAULT now() NOT NULL,
+        processed_at timestamp
+      );
+      CREATE TABLE IF NOT EXISTS contact_messages (
+        id serial PRIMARY KEY,
+        user_id integer NOT NULL REFERENCES users(id),
+        sender_id integer NOT NULL REFERENCES users(id),
+        sender_role text NOT NULL,
+        sender_name text NOT NULL,
+        message text NOT NULL,
+        created_at timestamp DEFAULT now() NOT NULL
+      );
+    `);
+  }
 }
 
 let coreSeeded = false;

@@ -7,6 +7,8 @@ import { db, dbConfigSource, ensureDbReady, hasDatabaseConfig, isUsingMockDb } f
 import {
   auditLogs,
   competitions,
+  contactMessages,
+  depositRequests,
   markets,
   matches,
   promotionsClaimed,
@@ -19,6 +21,7 @@ import {
 } from './db/schema.ts';
 import {
   type AuthRequest,
+  OWNER_ADMIN_EMAILS,
   requireAdmin,
   requireAuth,
   resolveAuthUser,
@@ -43,7 +46,7 @@ import {
 import { realtimeHub } from './services/realtimeHub.ts';
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' }));
 
 function sendApiError(res: Response, error: unknown, fallbackMessage: string, defaultStatus = 500) {
   const msg = error instanceof Error ? error.message : String(error || fallbackMessage);
@@ -109,10 +112,14 @@ app.get('/api/stream', (req, res) => {
   const onMatchesUpdated = (payload: unknown) => sendEvent('matches_updated', payload);
   const onBalanceUpdated = (payload: unknown) => sendEvent('balance_updated', payload);
   const onDepositRequested = (payload: unknown) => sendEvent('deposit_requested', payload);
+  const onDepositUpdated = (payload: unknown) => sendEvent('deposit_updated', payload);
+  const onMessageReceived = (payload: unknown) => sendEvent('message_received', payload);
 
   realtimeHub.on('matches_updated', onMatchesUpdated);
   realtimeHub.on('balance_updated', onBalanceUpdated);
   realtimeHub.on('deposit_requested', onDepositRequested);
+  realtimeHub.on('deposit_updated', onDepositUpdated);
+  realtimeHub.on('message_received', onMessageReceived);
 
   const heartbeat = setInterval(() => {
     if (!res.writableEnded) {
@@ -135,6 +142,8 @@ app.get('/api/stream', (req, res) => {
     realtimeHub.off('matches_updated', onMatchesUpdated);
     realtimeHub.off('balance_updated', onBalanceUpdated);
     realtimeHub.off('deposit_requested', onDepositRequested);
+    realtimeHub.off('deposit_updated', onDepositUpdated);
+    realtimeHub.off('message_received', onMessageReceived);
   };
 
   req.on('close', cleanup);
@@ -194,6 +203,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     const passwordHash = await bcrypt.hash(rawPassword, 10);
     const uid = `local_${crypto.randomUUID()}`;
+    const assignedRole = OWNER_ADMIN_EMAILS.has(cleanEmail) ? 'admin' : 'user';
 
     const [created] = await db
       .insert(users)
@@ -203,7 +213,7 @@ app.post('/api/auth/register', async (req, res) => {
         email: cleanEmail,
         passwordHash,
         virtualBalance: 0, // Users begin with 0.00 DT
-        role: 'user',
+        role: assignedRole,
         favoriteTeams: '[]',
         favoriteSports: '["football","basketball"]',
       })
@@ -237,12 +247,22 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
+    let resolvedUser = found[0];
+    if (OWNER_ADMIN_EMAILS.has(cleanEmail) && resolvedUser.role !== 'admin') {
+      const [promoted] = await db
+        .update(users)
+        .set({ role: 'admin' })
+        .where(eq(users.id, resolvedUser.id))
+        .returning();
+      if (promoted) resolvedUser = promoted;
+    }
+
     const token = signSessionToken({
-      uid: found[0].uid,
-      email: found[0].email,
-      role: found[0].role,
+      uid: resolvedUser.uid,
+      email: resolvedUser.email,
+      role: resolvedUser.role,
     });
-    res.json({ token, user: serializeUser(found[0]) });
+    res.json({ token, user: serializeUser(resolvedUser) });
   } catch (error) {
     console.error('Login error:', error);
     return sendApiError(res, error, 'Login failed. Please try again.');
@@ -674,6 +694,11 @@ app.get('/api/matches/:id/matchcenter', async (req, res) => {
 app.post('/api/bets', requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.authUser!;
+    if (user.role === 'admin') {
+      return res.status(403).json({
+        error: 'Les administrateurs ne peuvent pas placer de paris. Vous gérez uniquement les dépôts et les demandes.',
+      });
+    }
     const { stake, marketIds, mode, systemSize, idempotencyKey } = req.body ?? {};
     const result = await placeVirtualBet({
       userId: user.id,
@@ -762,43 +787,350 @@ app.get('/api/transactions', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
+function serializeDepositRow(
+  row: typeof depositRequests.$inferSelect,
+  extra?: { username?: string; email?: string }
+) {
+  let parsedCodes: string[] = [];
+  try {
+    parsedCodes = JSON.parse(row.ticketCodes || '[]');
+    if (!Array.isArray(parsedCodes)) parsedCodes = [];
+  } catch {
+    parsedCodes = [];
+  }
+  return {
+    id: row.id,
+    userId: row.userId,
+    ...(extra?.username ? { username: extra.username } : {}),
+    ...(extra?.email ? { email: extra.email } : {}),
+    method: row.method,
+    operator: row.operator,
+    amount: Math.round(row.amount * 100) / 100,
+    ticketCodes: parsedCodes,
+    phoneNumber: row.phoneNumber,
+    screenshotData: row.screenshotData,
+    note: row.note,
+    status: row.status,
+    adminNote: row.adminNote,
+    createdAt: row.createdAt,
+    processedAt: row.processedAt,
+  };
+}
+
+app.get('/api/deposits/mine', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const user = req.authUser!;
+    const rows = await db
+      .select()
+      .from(depositRequests)
+      .where(eq(depositRequests.userId, user.id))
+      .orderBy(desc(depositRequests.createdAt))
+      .limit(40);
+
+    res.json({ deposits: rows.map((r) => serializeDepositRow(r)) });
+  } catch (error) {
+    console.error('My deposits error:', error);
+    return sendApiError(res, error, 'Impossible de charger vos demandes de recharge.');
+  }
+});
+
 app.post('/api/deposits', requireAuth, async (req: AuthRequest, res) => {
   try {
     const user = req.authUser!;
-    const amount = Math.round(Number(req.body?.amount) * 100) / 100;
-    const rawMethod = String(req.body?.method || 'D17').trim().slice(0, 32);
-    const allowedMethods = ['D17', 'Flouci', 'Bank Transfer', 'Cash'];
-    const method = allowedMethods.includes(rawMethod) ? rawMethod : 'D17';
-    const reference = String(req.body?.reference || '').trim().slice(0, 80);
-
-    if (!Number.isFinite(amount) || amount < 1 || amount > 50000) {
-      return res.status(400).json({ error: 'Deposit amount must be between 1.00 DT and 50,000 DT.' });
-    }
-    if (reference.length < 3) {
-      return res.status(400).json({ error: 'Please enter a valid transfer reference (min 3 characters).' });
+    if (user.role === 'admin') {
+      return res.status(403).json({
+        error: 'Un administrateur ne soumet pas de recharge ici. Utilisez la console Admin.',
+      });
     }
 
-    const [created] = await db
-      .insert(transactions)
-      .values({
+    const rawMethod = String(req.body?.method || 'tickets').trim();
+    const rawOperator = String(req.body?.operator || '').trim();
+    const rawPhone = String(req.body?.phoneNumber || '').replace(/[\s\-()+]/g, '');
+    const rawNote = String(req.body?.note || '').trim().slice(0, 180);
+
+    if (rawMethod === 'tickets') {
+      const allowedTicketOperators = ['Ooredoo', 'Orange', 'Tunisie Telecom'] as const;
+      if (!allowedTicketOperators.includes(rawOperator as any)) {
+        return res.status(400).json({
+          error: 'Choisissez un opérateur valide : Ooredoo, Orange ou Tunisie Telecom.',
+        });
+      }
+
+      const rawCodes: string[] = Array.isArray(req.body?.ticketCodes)
+        ? req.body.ticketCodes.map((c: unknown) => String(c || '').replace(/[\s-]+/g, ''))
+        : [];
+      const cleanedCodes = rawCodes.filter(Boolean);
+
+      if (cleanedCodes.length === 0 || cleanedCodes.length > 25) {
+        return res.status(400).json({
+          error: 'Entrez entre 1 et 25 numéros de tickets de recharge.',
+        });
+      }
+
+      const expectedRegex = rawOperator === 'Tunisie Telecom' ? /^\d{13,14}$/ : /^\d{14}$/;
+      for (const code of cleanedCodes) {
+        if (!expectedRegex.test(code)) {
+          return res.status(400).json({
+            error:
+              rawOperator === 'Tunisie Telecom'
+                ? `Numéro de ticket Tunisie Telecom invalide (${code}) : 13 à 14 chiffres requis.`
+                : `Numéro de ticket ${rawOperator} invalide (${code}) : exactement 14 chiffres requis.`,
+          });
+        }
+      }
+
+      const uniqueCodes = new Set(cleanedCodes);
+      if (uniqueCodes.size !== cleanedCodes.length) {
+        return res.status(400).json({
+          error: 'Vous avez saisi le même numéro de ticket en double.',
+        });
+      }
+
+      // Check against existing non-rejected deposits so same ticket code isn't reused
+      const existingTicketDeposits = await db
+        .select({ ticketCodes: depositRequests.ticketCodes, status: depositRequests.status })
+        .from(depositRequests)
+        .where(eq(depositRequests.method, 'tickets'));
+
+      for (const ex of existingTicketDeposits) {
+        if (ex.status === 'rejected') continue;
+        try {
+          const used = JSON.parse(ex.ticketCodes || '[]') as string[];
+          const dup = cleanedCodes.find((c) => used.includes(c));
+          if (dup) {
+            return res.status(409).json({
+              error: `Le ticket ${dup} a déjà été soumis.`,
+            });
+          }
+        } catch {
+          // ignore malformed JSON
+        }
+      }
+
+      // Each ticket = 2 DT
+      const amount = Math.round(cleanedCodes.length * 2 * 100) / 100;
+
+      const [created] = await db
+        .insert(depositRequests)
+        .values({
+          userId: user.id,
+          method: 'tickets',
+          operator: rawOperator,
+          amount,
+          ticketCodes: JSON.stringify(cleanedCodes),
+          phoneNumber: rawPhone || null,
+          screenshotData: null,
+          note: rawNote || null,
+          status: 'pending',
+        })
+        .returning();
+
+      await db.insert(transactions).values({
         userId: user.id,
         amount,
         transactionType: 'deposit_pending',
-        description: `[${method} · ${reference}] Pending Deposit Request`,
+        description: `[Tickets ${rawOperator} · ${cleanedCodes.length}×2 DT] En cours de traitement`,
+      });
+
+      realtimeHub.emitDepositRequested({
+        depositId: created.id,
+        userId: user.id,
+        username: user.username,
+        method: 'tickets',
+        operator: rawOperator,
+        amount,
+        reference: `${cleanedCodes.length} ticket(s)`,
+      });
+
+      return res.status(201).json({ deposit: serializeDepositRow(created) });
+    }
+
+    if (rawMethod === 'D17') {
+      const amount = Math.round(Number(req.body?.amount) * 100) / 100;
+      const screenshotData = typeof req.body?.screenshotData === 'string' ? req.body.screenshotData.trim() : '';
+
+      if (!Number.isFinite(amount) || amount < 5 || amount > 50000) {
+        return res.status(400).json({
+          error: 'Le montant D17 minimum est de 5.00 DT (max 50,000 DT).',
+        });
+      }
+      if (!/^\d{8,15}$/.test(rawPhone)) {
+        return res.status(400).json({
+          error: 'Entrez votre numéro de téléphone D17 valide (ex: 8 chiffres tunisiens).',
+        });
+      }
+      if (!/^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=]+$/.test(screenshotData)) {
+        return res.status(400).json({
+          error: 'Veuillez joindre une capture d’écran valide de votre opération D17 depuis votre galerie.',
+        });
+      }
+      if (screenshotData.length > 3_500_000) {
+        return res.status(400).json({
+          error: 'La capture d’écran est trop lourde. Choisissez une image plus légère.',
+        });
+      }
+
+      const [created] = await db
+        .insert(depositRequests)
+        .values({
+          userId: user.id,
+          method: 'D17',
+          operator: 'D17',
+          amount,
+          ticketCodes: '[]',
+          phoneNumber: rawPhone,
+          screenshotData,
+          note: rawNote || null,
+          status: 'pending',
+        })
+        .returning();
+
+      await db.insert(transactions).values({
+        userId: user.id,
+        amount,
+        transactionType: 'deposit_pending',
+        description: `[D17 · ${rawPhone}] En cours de traitement`,
+      });
+
+      realtimeHub.emitDepositRequested({
+        depositId: created.id,
+        userId: user.id,
+        username: user.username,
+        method: 'D17',
+        operator: 'D17',
+        amount,
+        reference: rawPhone,
+      });
+
+      return res.status(201).json({ deposit: serializeDepositRow(created) });
+    }
+
+    return res.status(400).json({ error: 'Méthode de recharge non prise en charge.' });
+  } catch (error) {
+    console.error('Deposit request error:', error);
+    return sendApiError(res, error, 'Impossible d’envoyer la demande de recharge.');
+  }
+});
+
+// Contact Admin (Real-Time Messaging for Sending Money & Support)
+app.get('/api/contact/info', async (_req, res) => {
+  try {
+    const admins = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        email: users.email,
+      })
+      .from(users)
+      .where(eq(users.role, 'admin'))
+      .limit(1);
+
+    const primaryAdmin = admins[0] || {
+      id: 0,
+      username: 'PatriceAdmin',
+      email: 'ppatrice191@gmail.com',
+    };
+
+    res.json({
+      admin: primaryAdmin,
+      acceptedOperators: ['Ooredoo', 'Orange', 'Tunisie Telecom', 'D17'],
+      ticketValueDt: 2,
+      minStakeDt: 5,
+    });
+  } catch (error) {
+    console.error('Contact info error:', error);
+    return sendApiError(res, error, 'Failed to load admin contact info.');
+  }
+});
+
+app.get('/api/contact/messages', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const authUser = req.authUser!;
+    if (authUser.role === 'admin') {
+      const targetUserId = req.query.userId ? Number.parseInt(String(req.query.userId), 10) : null;
+      const allUsers = await db.select().from(users);
+      const userMap = new Map(allUsers.map((u) => [u.id, u]));
+
+      const rows = targetUserId
+        ? await db
+            .select()
+            .from(contactMessages)
+            .where(eq(contactMessages.userId, targetUserId))
+            .orderBy(contactMessages.createdAt)
+        : await db
+            .select()
+            .from(contactMessages)
+            .orderBy(desc(contactMessages.createdAt))
+            .limit(200);
+
+      const enriched = rows.map((m) => {
+        const owner = userMap.get(m.userId);
+        return {
+          ...m,
+          userName: owner?.username || `User #${m.userId}`,
+          userEmail: owner?.email || '',
+          userBalance: owner ? Math.round(owner.virtualBalance * 100) / 100 : 0,
+        };
+      });
+
+      return res.json({ messages: enriched });
+    }
+
+    const rows = await db
+      .select()
+      .from(contactMessages)
+      .where(eq(contactMessages.userId, authUser.id))
+      .orderBy(contactMessages.createdAt);
+
+    res.json({ messages: rows });
+  } catch (error) {
+    console.error('Contact messages list error:', error);
+    return sendApiError(res, error, 'Failed to load messages.');
+  }
+});
+
+app.post('/api/contact/messages', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const authUser = req.authUser!;
+    const cleanText = String(req.body?.message || '').trim().slice(0, 600);
+    if (cleanText.length < 1) {
+      return res.status(400).json({ error: 'Entrez un message avant d’envoyer.' });
+    }
+
+    let conversationUserId = authUser.id;
+    if (authUser.role === 'admin') {
+      const targetId = Number(req.body?.userId);
+      if (!Number.isInteger(targetId) || targetId <= 0) {
+        return res.status(400).json({ error: 'Sélectionnez un utilisateur à qui répondre.' });
+      }
+      conversationUserId = targetId;
+    }
+
+    const [created] = await db
+      .insert(contactMessages)
+      .values({
+        userId: conversationUserId,
+        senderId: authUser.id,
+        senderRole: authUser.role === 'admin' ? 'admin' : 'user',
+        senderName: authUser.username,
+        message: cleanText,
       })
       .returning();
 
-    realtimeHub.emitDepositRequested({
-      userId: user.id,
-      username: user.username,
-      amount,
-      reference,
+    realtimeHub.emitMessageReceived({
+      id: created.id,
+      userId: created.userId,
+      senderId: created.senderId,
+      senderRole: created.senderRole === 'admin' ? 'admin' : 'user',
+      senderName: created.senderName,
+      message: created.message,
+      createdAt: created.createdAt,
     });
 
-    res.status(201).json({ deposit: created });
+    res.status(201).json({ message: created });
   } catch (error) {
-    console.error('Deposit request error:', error);
-    return sendApiError(res, error, 'Failed to submit deposit request.');
+    console.error('Send contact message error:', error);
+    return sendApiError(res, error, 'Impossible d’envoyer le message.');
   }
 });
 
@@ -1069,24 +1401,21 @@ app.post('/api/admin/users/:id/credit', requireAuth, requireAdmin, async (req: A
 
 app.get('/api/admin/deposits', requireAuth, requireAdmin, async (_req, res) => {
   try {
-    const rows = await db
-      .select({
-        id: transactions.id,
-        userId: transactions.userId,
-        username: users.username,
-        email: users.email,
-        amount: transactions.amount,
-        transactionType: transactions.transactionType,
-        description: transactions.description,
-        createdAt: transactions.createdAt,
-      })
-      .from(transactions)
-      .innerJoin(users, eq(transactions.userId, users.id))
-      .where(inArray(transactions.transactionType, ['deposit_pending', 'deposit_approved', 'deposit_rejected']))
-      .orderBy(desc(transactions.createdAt))
-      .limit(60);
+    const [rows, allUsers] = await Promise.all([
+      db.select().from(depositRequests).orderBy(desc(depositRequests.createdAt)).limit(80),
+      db.select({ id: users.id, username: users.username, email: users.email }).from(users),
+    ]);
 
-    res.json({ deposits: rows });
+    const userMap = new Map(allUsers.map((u) => [u.id, u]));
+    res.json({
+      deposits: rows.map((r) => {
+        const u = userMap.get(r.userId);
+        return serializeDepositRow(r, {
+          username: u?.username || `User #${r.userId}`,
+          email: u?.email || '',
+        });
+      }),
+    });
   } catch (error) {
     console.error('Admin deposits list error:', error);
     return sendApiError(res, error, 'Failed to load deposit requests.');
@@ -1095,31 +1424,34 @@ app.get('/api/admin/deposits', requireAuth, requireAdmin, async (_req, res) => {
 
 app.post('/api/admin/deposits/:id/approve', requireAuth, requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const txId = Number.parseInt(req.params.id, 10);
-    if (!Number.isInteger(txId)) return res.status(400).json({ error: 'Invalid deposit ID.' });
+    const depId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(depId)) return res.status(400).json({ error: 'Invalid deposit ID.' });
+    const adminNote = String(req.body?.adminNote || '').trim().slice(0, 180) || 'Validé par Admin';
 
     const result = await db.transaction(async (tx) => {
       const [pendingRow] = await tx
         .select()
-        .from(transactions)
-        .where(and(eq(transactions.id, txId), eq(transactions.transactionType, 'deposit_pending')))
+        .from(depositRequests)
+        .where(and(eq(depositRequests.id, depId), eq(depositRequests.status, 'pending')))
         .limit(1);
 
       if (!pendingRow) {
-        throw new Error('Deposit request not found or already processed.');
+        throw new Error('Demande de recharge introuvable ou déjà traitée.');
       }
 
-      const [updatedTx] = await tx
-        .update(transactions)
+      const [updatedDep] = await tx
+        .update(depositRequests)
         .set({
-          transactionType: 'deposit_approved',
-          description: `${pendingRow.description.replace('Pending Deposit Request', 'Approved Deposit')} · by ${req.authUser!.username}`,
+          status: 'approved',
+          adminNote,
+          processedBy: req.authUser!.id,
+          processedAt: new Date(),
         })
-        .where(and(eq(transactions.id, txId), eq(transactions.transactionType, 'deposit_pending')))
+        .where(and(eq(depositRequests.id, depId), eq(depositRequests.status, 'pending')))
         .returning();
 
-      if (!updatedTx) {
-        throw new Error('Deposit request was already processed.');
+      if (!updatedDep) {
+        throw new Error('Demande déjà traitée.');
       }
 
       const [userRow] = await tx
@@ -1134,17 +1466,32 @@ app.post('/api/admin/deposits/:id/approve', requireAuth, requireAdmin, async (re
         throw new Error('User account not found.');
       }
 
+      await tx.insert(transactions).values({
+        userId: pendingRow.userId,
+        amount: pendingRow.amount,
+        transactionType: 'deposit_approved',
+        description: `[${pendingRow.operator}] Recharge acceptée (+${pendingRow.amount.toFixed(2)} DT) · par ${req.authUser!.username}`,
+      });
+
       await tx.insert(auditLogs).values({
         adminId: req.authUser!.id,
         action: 'APPROVE_DEPOSIT',
-        details: `Approved deposit #${txId} (+${pendingRow.amount.toFixed(2)} DT) for ${userRow.email}`,
+        details: `Approved ${pendingRow.operator} deposit #${depId} (+${pendingRow.amount.toFixed(2)} DT) for ${userRow.email}`,
       });
 
-      return { deposit: updatedTx, user: userRow };
+      return { deposit: updatedDep, user: userRow };
     });
 
     realtimeHub.emitUserBalanceUpdated(result.user.id, result.user.virtualBalance, 'deposit_approved');
-    res.json({ deposit: result.deposit, user: serializeUser(result.user) });
+    realtimeHub.emitDepositUpdated({
+      depositId: result.deposit.id,
+      userId: result.user.id,
+      status: 'approved',
+      amount: result.deposit.amount,
+      adminNote: result.deposit.adminNote,
+      newBalance: result.user.virtualBalance,
+    });
+    res.json({ deposit: serializeDepositRow(result.deposit), user: serializeUser(result.user) });
   } catch (error: any) {
     res.status(400).json({ error: error?.message || 'Failed to approve deposit.' });
   }
@@ -1152,48 +1499,65 @@ app.post('/api/admin/deposits/:id/approve', requireAuth, requireAdmin, async (re
 
 app.post('/api/admin/deposits/:id/reject', requireAuth, requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const txId = Number.parseInt(req.params.id, 10);
-    if (!Number.isInteger(txId)) return res.status(400).json({ error: 'Invalid deposit ID.' });
+    const depId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(depId)) return res.status(400).json({ error: 'Invalid deposit ID.' });
+    const adminNote = String(req.body?.adminNote || '').trim().slice(0, 180) || 'Refusé par Admin';
 
     const result = await db.transaction(async (tx) => {
       const [pendingRow] = await tx
         .select()
-        .from(transactions)
-        .where(and(eq(transactions.id, txId), eq(transactions.transactionType, 'deposit_pending')))
+        .from(depositRequests)
+        .where(and(eq(depositRequests.id, depId), eq(depositRequests.status, 'pending')))
         .limit(1);
 
       if (!pendingRow) {
-        throw new Error('Deposit request not found or already processed.');
+        throw new Error('Demande de recharge introuvable ou déjà traitée.');
       }
 
-      const [updatedTx] = await tx
-        .update(transactions)
+      const [updatedDep] = await tx
+        .update(depositRequests)
         .set({
-          transactionType: 'deposit_rejected',
-          description: `${pendingRow.description.replace('Pending Deposit Request', 'Rejected Deposit')} · by ${req.authUser!.username}`,
+          status: 'rejected',
+          adminNote,
+          processedBy: req.authUser!.id,
+          processedAt: new Date(),
         })
-        .where(and(eq(transactions.id, txId), eq(transactions.transactionType, 'deposit_pending')))
+        .where(and(eq(depositRequests.id, depId), eq(depositRequests.status, 'pending')))
         .returning();
 
-      if (!updatedTx) {
-        throw new Error('Deposit request was already processed.');
+      if (!updatedDep) {
+        throw new Error('Demande déjà traitée.');
       }
 
       const [userRow] = await tx.select().from(users).where(eq(users.id, pendingRow.userId)).limit(1);
 
+      await tx.insert(transactions).values({
+        userId: pendingRow.userId,
+        amount: pendingRow.amount,
+        transactionType: 'deposit_rejected',
+        description: `[${pendingRow.operator}] Recharge refusée (${adminNote})`,
+      });
+
       await tx.insert(auditLogs).values({
         adminId: req.authUser!.id,
         action: 'REJECT_DEPOSIT',
-        details: `Rejected deposit #${txId} (${pendingRow.amount.toFixed(2)} DT) for user #${pendingRow.userId}`,
+        details: `Rejected ${pendingRow.operator} deposit #${depId} (${pendingRow.amount.toFixed(2)} DT) for user #${pendingRow.userId}`,
       });
 
-      return { deposit: updatedTx, user: userRow };
+      return { deposit: updatedDep, user: userRow };
     });
 
     if (result.user) {
       realtimeHub.emitUserBalanceUpdated(result.user.id, result.user.virtualBalance, 'deposit_rejected');
     }
-    res.json({ deposit: result.deposit });
+    realtimeHub.emitDepositUpdated({
+      depositId: result.deposit.id,
+      userId: result.deposit.userId,
+      status: 'rejected',
+      amount: result.deposit.amount,
+      adminNote: result.deposit.adminNote,
+    });
+    res.json({ deposit: serializeDepositRow(result.deposit) });
   } catch (error: any) {
     res.status(400).json({ error: error?.message || 'Failed to reject deposit.' });
   }

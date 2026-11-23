@@ -151,11 +151,46 @@ export const promotionsClaimed = pgTable('promotions_claimed', {
   claimedAt: timestamp('claimed_at').defaultNow().notNull(),
 });
 
+export const depositRequests = pgTable('deposit_requests', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id')
+    .references(() => users.id)
+    .notNull(),
+  method: text('method').notNull(), // 'tickets' | 'D17'
+  operator: text('operator').notNull(), // 'Ooredoo' | 'Orange' | 'Tunisie Telecom' | 'D17'
+  amount: doublePrecision('amount').notNull(),
+  ticketCodes: text('ticket_codes').notNull().default('[]'),
+  phoneNumber: text('phone_number'),
+  screenshotData: text('screenshot_data'),
+  note: text('note'),
+  status: text('status').notNull().default('pending'), // 'pending' | 'approved' | 'rejected'
+  adminNote: text('admin_note'),
+  processedBy: integer('processed_by'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  processedAt: timestamp('processed_at'),
+});
+
+export const contactMessages = pgTable('contact_messages', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id')
+    .references(() => users.id)
+    .notNull(),
+  senderId: integer('sender_id')
+    .references(() => users.id)
+    .notNull(),
+  senderRole: text('sender_role').notNull(), // 'user' | 'admin'
+  senderName: text('sender_name').notNull(),
+  message: text('message').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
 export const usersRelations = relations(users, ({ many }) => ({
   virtualBets: many(virtualBets),
   transactions: many(transactions),
   auditLogs: many(auditLogs),
   promotionsClaimed: many(promotionsClaimed),
+  depositRequests: many(depositRequests),
+  contactMessages: many(contactMessages),
 }));
 
 export const sportsRelations = relations(sports, ({ many }) => ({
@@ -239,6 +274,20 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   admin: one(users, {
     fields: [auditLogs.adminId],
+    references: [users.id],
+  }),
+}));
+
+export const depositRequestsRelations = relations(depositRequests, ({ one }) => ({
+  user: one(users, {
+    fields: [depositRequests.userId],
+    references: [users.id],
+  }),
+}));
+
+export const contactMessagesRelations = relations(contactMessages, ({ one }) => ({
+  user: one(users, {
+    fields: [contactMessages.userId],
     references: [users.id],
   }),
 }));

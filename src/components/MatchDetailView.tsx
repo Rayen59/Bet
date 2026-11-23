@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 import { computeGroupOdds } from '../lib/betBuilder';
+import { useAuth } from '../context/AuthContext';
 import { useSlip } from '../context/SlipContext';
 import { MarketItem, MatchCenterData, MatchItem } from '../types/sportzone';
 import { TeamBadge } from './BrandLogo';
@@ -44,6 +45,7 @@ export function MatchDetailView({ matchId, onBack }: MatchDetailViewProps) {
   const [marketFilter, setMarketFilter] = useState<MarketFilter>('all');
   const [hideIllogical, setHideIllogical] = useState(true);
 
+  const { user } = useAuth();
   const {
     toggleSelection,
     removeSelection,
@@ -411,7 +413,9 @@ export function MatchDetailView({ matchId, onBack }: MatchDetailViewProps) {
                     )}
                   </h2>
                   <p className="text-xs text-zinc-400">
-                    Select multiple compatible markets on this match — illogical choices are automatically removed.
+                    {user?.role === 'admin'
+                      ? 'Mode Admin : aperçu des marchés uniquement (les paris sont désactivés pour l’administrateur).'
+                      : 'Sélectionnez plusieurs choix logiques sur ce match — les choix illogiques sont automatiquement supprimés.'}
                   </p>
                 </div>
               </div>

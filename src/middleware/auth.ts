@@ -14,7 +14,7 @@ const JWT_SECRET =
   process.env.VERCEL_PROJECT_PRODUCTION_URL ||
   'sportzone-sim-secret-key-2026';
 const STARTING_VIRTUAL_CREDITS = 0; // Users begin with 0.00 DT until credited by Admin
-const OWNER_ADMIN_EMAILS = new Set(['ppatrice191@gmail.com', 'ppatrice189@gmail.com']);
+export const OWNER_ADMIN_EMAILS = new Set(['ppatrice191@gmail.com', 'ppatrice189@gmail.com']);
 
 export interface AuthenticatedUser {
   id: number;
@@ -86,6 +86,14 @@ export async function getOrCreateFirebaseUser(uid: string, email: string, displa
 
     const existing = await findByUidOrEmail();
     if (existing) {
+      if (OWNER_ADMIN_EMAILS.has(cleanEmail) && existing.role !== 'admin') {
+        const [promoted] = await db
+          .update(users)
+          .set({ role: 'admin' })
+          .where(eq(users.id, existing.id))
+          .returning();
+        return serializeUser(promoted || { ...existing, role: 'admin' });
+      }
       return serializeUser(existing);
     }
 

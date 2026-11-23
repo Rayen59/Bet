@@ -21,6 +21,7 @@ import {
   Shield,
   Trophy,
   User as UserIcon,
+  Wallet,
   X,
   Zap,
 } from 'lucide-react';
@@ -35,6 +36,7 @@ import { HomeAndMatchesView } from './components/HomeAndMatchesView';
 import { MatchDetailView } from './components/MatchDetailView';
 import { AuthViews } from './components/AuthViews';
 import { UserDashboardView } from './components/UserDashboardView';
+import { RechargeView } from './components/RechargeView';
 import { LeaderboardView, PromotionsView } from './components/CommunityViews';
 import { AdminDashboardView } from './components/AdminDashboardView';
 
@@ -174,7 +176,7 @@ export default function App() {
                   route === 'home' ? 'text-[#f5b800]' : ''
                 }`}
               >
-                Sports Betting
+                Accueil
               </button>
               <button
                 type="button"
@@ -183,11 +185,23 @@ export default function App() {
                   route === 'live' ? 'text-[#f5b800]' : ''
                 }`}
               >
-                <span>Live Betting</span>
+                <span>Live</span>
                 <span className="rounded bg-[#e11d2e] px-1.5 py-0.5 font-mono-tabular text-[10px] font-extrabold text-white">
                   {liveTotal}
                 </span>
               </button>
+              {user?.role !== 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => navigate('recharge')}
+                  className={`whitespace-nowrap shrink-0 transition-colors hover:text-white inline-flex items-center gap-1.5 ${
+                    route === 'recharge' ? 'text-[#f5b800]' : ''
+                  }`}
+                >
+                  <Wallet className="w-3.5 h-3.5 text-[#f5b800]" />
+                  <span>Recharger</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => navigate('leaderboard')}
@@ -195,18 +209,9 @@ export default function App() {
                   route === 'leaderboard' ? 'text-[#f5b800]' : ''
                 }`}
               >
-                Leaderboard
+                Classement
               </button>
-              <button
-                type="button"
-                onClick={() => navigate('promotions')}
-                className={`whitespace-nowrap shrink-0 transition-colors hover:text-white ${
-                  route === 'promotions' ? 'text-[#f5b800]' : ''
-                }`}
-              >
-                Promotions
-              </button>
-              {user && (
+              {user && user.role !== 'admin' && (
                 <button
                   type="button"
                   onClick={() => navigate('history')}
@@ -216,7 +221,7 @@ export default function App() {
                       : ''
                   }`}
                 >
-                  My Bets
+                  Mes Paris
                 </button>
               )}
               {user?.role === 'admin' && (
@@ -227,7 +232,7 @@ export default function App() {
                     route === 'admin' ? 'text-[#f5b800] underline underline-offset-4' : 'text-[#f5b800]'
                   }`}
                 >
-                  Admin
+                  Console Admin
                 </button>
               )}
             </nav>
@@ -245,15 +250,26 @@ export default function App() {
                   setRoute('live');
                 }
               }}
-              placeholder="Search teams, leagues..."
+              placeholder="Rechercher équipe, ligue..."
               className="w-full rounded-lg border border-zinc-800 bg-[#1c1c1f] pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-400 focus:border-[#f5b800] focus:outline-none"
             />
           </div>
 
-          {/* Right: Gold Outlined User Pill matching screenshot 5f64d28e */}
+          {/* Right: Wallet + Recharge + Admin / Auth */}
           <div className="flex items-center gap-2 shrink-0">
             {user ? (
               <>
+                {user.role !== 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('recharge')}
+                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-2 text-xs whitespace-nowrap shrink-0 transition-colors"
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                    <span>+ Recharger</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -275,7 +291,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => navigate('admin')}
-                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-2 text-xs whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-2 text-xs whitespace-nowrap shrink-0"
                   >
                     <Shield className="w-3.5 h-3.5" />
                     <span>Admin</span>
@@ -289,14 +305,14 @@ export default function App() {
                   onClick={() => navigate('login')}
                   className="px-3.5 py-2 rounded-lg border border-zinc-700 text-xs font-semibold text-zinc-200 hover:text-white transition-colors whitespace-nowrap shrink-0"
                 >
-                  Sign In
+                  Connexion
                 </button>
                 <button
                   type="button"
                   onClick={() => navigate('register')}
                   className="px-4 py-2 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold text-xs transition-colors whitespace-nowrap shrink-0"
                 >
-                  Register
+                  Inscription
                 </button>
               </>
             )}
@@ -473,31 +489,43 @@ export default function App() {
                     className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
                   >
                     <UserIcon className="w-4 h-4 text-zinc-300" />
-                    <span>My account</span>
+                    <span>Mon compte</span>
                   </button>
+                  {user?.role !== 'admin' && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('recharge')}
+                      className="w-full flex items-center gap-3 py-3.5 px-2 text-[#f5b800] font-bold hover:bg-zinc-900"
+                    >
+                      <Wallet className="w-4 h-4" />
+                      <span>Recharger & Contacter Admin</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => navigate(user ? 'profile' : 'login')}
                     className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
                   >
                     <Lock className="w-4 h-4 text-zinc-300" />
-                    <span>Profile & Preferences</span>
+                    <span>Profil & Préférences</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate(user ? 'history' : 'login')}
-                    className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
-                  >
-                    <History className="w-4 h-4 text-zinc-300" />
-                    <span>Betting History</span>
-                  </button>
+                  {user?.role !== 'admin' && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(user ? 'history' : 'login')}
+                      className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
+                    >
+                      <History className="w-4 h-4 text-zinc-300" />
+                      <span>Mes Paris</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => navigate('leaderboard')}
                     className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
                   >
                     <Award className="w-4 h-4 text-zinc-300" />
-                    <span>Leaderboard</span>
+                    <span>Classement</span>
                   </button>
                   {user?.role === 'admin' && (
                     <button
@@ -586,6 +614,20 @@ export default function App() {
               Menu
             </div>
             <div className="p-1.5 space-y-0.5 text-xs font-medium">
+              {user?.role !== 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => navigate('recharge')}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                    route === 'recharge'
+                      ? 'bg-[#f5b800] text-[#111111] font-bold'
+                      : 'text-[#f5b800] hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <Wallet className="w-4 h-4" />
+                  <span>Recharger & Contacter</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => navigate('dashboard')}
@@ -596,20 +638,22 @@ export default function App() {
                 }`}
               >
                 <LayoutDashboard className="w-4 h-4 text-zinc-400" />
-                <span>My Account</span>
+                <span>Mon Compte</span>
               </button>
-              <button
-                type="button"
-                onClick={() => navigate('history')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                  route === 'history'
-                    ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-200 hover:bg-zinc-800/60'
-                }`}
-              >
-                <History className="w-4 h-4 text-zinc-400" />
-                <span>Betting History</span>
-              </button>
+              {user?.role !== 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => navigate('history')}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                    route === 'history'
+                      ? 'bg-[#f5b800]/15 text-[#f5b800]'
+                      : 'text-zinc-200 hover:bg-zinc-800/60'
+                  }`}
+                >
+                  <History className="w-4 h-4 text-zinc-400" />
+                  <span>Mes Paris</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => navigate('leaderboard')}
@@ -620,7 +664,7 @@ export default function App() {
                 }`}
               >
                 <Award className="w-4 h-4 text-zinc-400" />
-                <span>Leaderboard</span>
+                <span>Classement</span>
               </button>
               <button
                 type="button"
@@ -632,7 +676,7 @@ export default function App() {
                 }`}
               >
                 <Gift className="w-4 h-4 text-[#f5b800]" />
-                <span>Sports Bonus</span>
+                <span>Bonus Sports</span>
               </button>
               {user?.role === 'admin' && (
                 <button
@@ -691,6 +735,8 @@ export default function App() {
             />
           )}
 
+          {route === 'recharge' && <RechargeView onNavigate={navigate} />}
+
           {route === 'leaderboard' && <LeaderboardView />}
 
           {route === 'promotions' && <PromotionsView onNavigate={navigate} />}
@@ -704,33 +750,37 @@ export default function App() {
           )}
         </main>
 
-        {/* Right Gold Betslip (lg+) */}
+        {/* Right Gold Betslip / Admin Mode Notice (lg+) */}
         <aside className="hidden lg:block sticky top-20 h-[calc(100vh-5.8rem)]">
           <BettingSlip onNavigate={navigate} onBetPlaced={() => loadCatalogAndMatches()} />
         </aside>
       </div>
 
-      {/* Mobile Floating Betslip Pill */}
-      {route !== 'login' && route !== 'register' && route !== 'reset-password' && route !== 'admin' && (
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          className="lg:hidden fixed bottom-18 right-4 z-40 flex items-center gap-2 rounded-full bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2.5 shadow-xl text-xs"
-        >
-          {betBuilderGroupCount > 0 ? (
-            <Layers className="w-4 h-4" />
-          ) : (
-            <Receipt className="w-4 h-4" />
-          )}
-          <span>
-            Betslip ({selections.length}
-            {betBuilderGroupCount > 0 ? ' · BB' : ''})
-          </span>
-          {combinedOdds > 0 && (
-            <span className="font-mono-tabular font-extrabold">· {combinedOdds.toFixed(2)}</span>
-          )}
-        </button>
-      )}
+      {/* Mobile Floating Betslip Pill (hidden for admin and auth routes) */}
+      {user?.role !== 'admin' &&
+        route !== 'login' &&
+        route !== 'register' &&
+        route !== 'reset-password' &&
+        route !== 'admin' && (
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="lg:hidden fixed bottom-18 right-4 z-40 flex items-center gap-2 rounded-full bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2.5 shadow-xl text-xs"
+          >
+            {betBuilderGroupCount > 0 ? (
+              <Layers className="w-4 h-4" />
+            ) : (
+              <Receipt className="w-4 h-4" />
+            )}
+            <span>
+              Ticket ({selections.length}
+              {betBuilderGroupCount > 0 ? ' · BB' : ''})
+            </span>
+            {combinedOdds > 0 && (
+              <span className="font-mono-tabular font-extrabold">· {combinedOdds.toFixed(2)}</span>
+            )}
+          </button>
+        )}
 
       {/* Mobile Betting Slip Drawer */}
       {mobileOpen && (
@@ -753,7 +803,7 @@ export default function App() {
           }`}
         >
           <Home className="w-4 h-4" />
-          <span>Home</span>
+          <span>Accueil</span>
         </button>
         <button
           type="button"
@@ -765,25 +815,38 @@ export default function App() {
           <Radio className="w-4 h-4" />
           <span>Live</span>
         </button>
+        {user?.role === 'admin' ? (
+          <button
+            type="button"
+            onClick={() => navigate('admin')}
+            className={`flex flex-col items-center justify-center gap-0.5 ${
+              route === 'admin' ? 'text-[#f5b800]' : 'text-zinc-400'
+            }`}
+          >
+            <Shield className="w-4 h-4" />
+            <span>Admin</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => navigate('recharge')}
+            className={`flex flex-col items-center justify-center gap-0.5 ${
+              route === 'recharge' ? 'text-[#f5b800]' : 'text-zinc-400'
+            }`}
+          >
+            <Wallet className="w-4 h-4" />
+            <span>Recharger</span>
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => navigate('sport-football')}
-          className={`flex flex-col items-center justify-center gap-0.5 ${
-            route.startsWith('sport-') ? 'text-[#f5b800]' : 'text-zinc-400'
-          }`}
-        >
-          <Trophy className="w-4 h-4" />
-          <span>Sports</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('history')}
+          onClick={() => navigate(user?.role === 'admin' ? 'admin' : 'history')}
           className={`flex flex-col items-center justify-center gap-0.5 ${
             route === 'history' ? 'text-[#f5b800]' : 'text-zinc-400'
           }`}
         >
           <History className="w-4 h-4" />
-          <span>My Bets</span>
+          <span>{user?.role === 'admin' ? 'Dépôts' : 'Mes Paris'}</span>
         </button>
         <button
           type="button"
@@ -800,7 +863,7 @@ export default function App() {
           }`}
         >
           <UserIcon className="w-4 h-4" />
-          <span>{user ? 'Account' : 'Sign In'}</span>
+          <span>{user ? 'Compte' : 'Connexion'}</span>
         </button>
       </nav>
     </div>

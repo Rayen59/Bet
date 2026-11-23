@@ -128,12 +128,32 @@ export interface TransactionItem {
 export interface DepositRequestItem {
   id: number;
   userId: number;
-  username: string;
-  email: string;
+  username?: string;
+  email?: string;
+  method: 'tickets' | 'D17' | string;
+  operator: 'Ooredoo' | 'Orange' | 'Tunisie Telecom' | 'D17' | string;
   amount: number;
-  transactionType: string;
-  description: string;
+  ticketCodes: string[];
+  phoneNumber?: string | null;
+  screenshotData?: string | null;
+  note?: string | null;
+  status: 'pending' | 'approved' | 'rejected' | string;
+  adminNote?: string | null;
   createdAt: string;
+  processedAt?: string | null;
+}
+
+export interface ContactMessageItem {
+  id: number;
+  userId: number;
+  senderId: number;
+  senderRole: 'user' | 'admin' | string;
+  senderName: string;
+  message: string;
+  createdAt: string;
+  userName?: string;
+  userEmail?: string;
+  userBalance?: number;
 }
 
 export interface LeaderboardEntry {
@@ -269,6 +289,7 @@ export type AppRoute =
   | 'sport-esports'
   | 'match-detail'
   | 'dashboard'
+  | 'recharge'
   | 'history'
   | 'leaderboard'
   | 'promotions'

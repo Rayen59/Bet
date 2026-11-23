@@ -7,7 +7,9 @@ import {
   Minus,
   RotateCcw,
   Settings,
+  Shield,
   Trash2,
+  Wallet,
   X,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -21,7 +23,7 @@ interface BettingSlipProps {
   onBetPlaced?: () => void;
 }
 
-const QUICK_STAKES = [1, 5, 10, 50];
+const QUICK_STAKES = [5, 10, 20, 50];
 
 function nCr(n: number, r: number): number {
   if (r > n || r < 0) return 0;
@@ -80,25 +82,29 @@ export function BettingSlip({ onNavigate, onBetPlaced }: BettingSlipProps) {
 
   const handleConfirmBet = async () => {
     if (!user) {
-      showToast('Please sign in to place a virtual bet.', 'info');
+      showToast('Veuillez vous connecter pour placer un pari.', 'info');
       setMobileOpen(false);
       onNavigate('login');
       return;
     }
-    if (selections.length === 0) {
-      showToast('Select at least one match outcome first.', 'error');
+    if (user.role === 'admin') {
+      showToast('Les administrateurs ne peuvent pas placer de paris.', 'error');
       return;
     }
-    if (stake < 0.2) {
-      showToast('Minimum stake per bet is 0.20 DT.', 'error');
+    if (selections.length === 0) {
+      showToast('Sélectionnez au moins un choix de match.', 'error');
+      return;
+    }
+    if (stake < 5) {
+      showToast('La mise minimum est de 5.00 DT.', 'error');
       return;
     }
     if (invalidSystemCount) {
-      showToast('System bets require between 3 and 10 different matches.', 'error');
+      showToast('Les paris Système nécessitent entre 3 et 10 matchs différents.', 'error');
       return;
     }
     if (insufficientBalance) {
-      showToast('Insufficient DT balance. Ask the administrator to credit your account.', 'error');
+      showToast('Solde insuffisant. Rechargez votre compte via Tickets ou D17.', 'error');
       return;
     }
 
@@ -207,7 +213,31 @@ export function BettingSlip({ onNavigate, onBetPlaced }: BettingSlipProps) {
         </button>
       </div>
 
-      {activeTab === 'betslip' ? (
+      {user?.role === 'admin' ? (
+        <div className="flex-1 p-5 flex flex-col items-center justify-center text-center space-y-4">
+          <div className="w-12 h-12 rounded-xl bg-[#f5b800]/15 border border-[#f5b800]/40 flex items-center justify-center text-[#f5b800]">
+            <Shield className="w-6 h-6" />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="font-heading text-sm font-extrabold uppercase text-white">
+              Mode Administrateur
+            </h3>
+            <p className="text-xs text-zinc-400 leading-relaxed max-w-[260px]">
+              Les administrateurs ne peuvent pas placer de paris. Votre rôle est de valider les recharges (Tickets / D17) et répondre aux joueurs en temps réel.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMobileOpen(false);
+              onNavigate('admin');
+            }}
+            className="w-full h-11 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-heading font-extrabold text-xs uppercase tracking-wide transition-colors"
+          >
+            Ouvrir la Console Admin
+          </button>
+        </div>
+      ) : activeTab === 'betslip' ? (
         <>
           {/* Single / Multiple / System Mode Tabs */}
           <div className="grid grid-cols-3 border-b border-zinc-800 bg-[#141416] text-xs font-heading font-bold">
@@ -493,9 +523,9 @@ export function BettingSlip({ onNavigate, onBetPlaced }: BettingSlipProps) {
                 <input
                   id="slip-stake-input"
                   type="number"
-                  min={0.2}
+                  min={5}
                   max={100000}
-                  step={0.5}
+                  step={1}
                   value={stake || ''}
                   onChange={(e) => setStake(Number(e.target.value))}
                   aria-label="Stake amount in DT"
@@ -510,7 +540,7 @@ export function BettingSlip({ onNavigate, onBetPlaced }: BettingSlipProps) {
                   key={amt}
                   type="button"
                   onClick={() => setStake(amt)}
-                  className={`rounded-md border py-1 text-[11px] font-mono-tabular font-semibold transition-colors ${
+                  className={`rounded-md border py-1.5 text-[11px] font-mono-tabular font-semibold transition-colors ${
                     stake === amt
                       ? 'border-[#f5b800] bg-[#f5b800]/15 text-[#f5b800]'
                       : 'border-zinc-800 bg-[#1c1c20] text-zinc-300 hover:text-white'
@@ -531,7 +561,7 @@ export function BettingSlip({ onNavigate, onBetPlaced }: BettingSlipProps) {
                 </div>
               )}
               <div className="flex items-center justify-between text-zinc-300 pb-1 border-b border-zinc-700/60">
-                <span>Total stake</span>
+                <span>Mise totale (min 5 DT)</span>
                 <span className="font-mono-tabular font-bold text-white">
                   DT {totalStake.toFixed(2)}
                 </span>
@@ -546,17 +576,36 @@ export function BettingSlip({ onNavigate, onBetPlaced }: BettingSlipProps) {
                 </div>
               )}
               <div className="flex items-center justify-between font-heading font-bold text-white pt-0.5">
-                <span>{comboCount > 1 ? 'Max Total Win' : 'Total Win'}</span>
+                <span>{comboCount > 1 ? 'Gain Max Total' : 'Gain Potentiel'}</span>
                 <span className="font-mono-tabular font-extrabold text-white">
                   DT {potentialWinnings.toFixed(2)}
                 </span>
               </div>
             </div>
 
-            {insufficientBalance && (
-              <p className="text-[11px] text-rose-400 font-medium">
-                Balance is {user?.virtualBalance.toFixed(2)} DT (need {totalStake.toFixed(2)} DT).
+            {stake > 0 && stake < 5 && (
+              <p className="text-[11px] text-amber-400 font-semibold">
+                Mise minimum requise : 5.00 DT
               </p>
+            )}
+
+            {insufficientBalance && (
+              <div className="rounded-lg border border-rose-500/35 bg-rose-950/25 p-2.5 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-rose-300 font-medium">
+                  Solde: {user?.virtualBalance.toFixed(2)} DT (besoin {totalStake.toFixed(2)} DT)
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    onNavigate('recharge');
+                  }}
+                  className="inline-flex items-center gap-1 rounded bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-2.5 py-1 text-[11px] shrink-0"
+                >
+                  <Wallet className="w-3 h-3" />
+                  <span>Recharger</span>
+                </button>
+              </div>
             )}
 
             <div className="flex items-center gap-2">
@@ -573,7 +622,7 @@ export function BettingSlip({ onNavigate, onBetPlaced }: BettingSlipProps) {
                 disabled={
                   submitting ||
                   selections.length === 0 ||
-                  stake < 0.2 ||
+                  stake < 5 ||
                   invalidSystemCount ||
                   insufficientBalance
                 }
