@@ -18,13 +18,13 @@ export function LeaderboardView() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-        <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-          <Trophy className="w-5 h-5 text-[#0a58ca]" />
-          <span>Classement des Joueurs</span>
+      <div className="rounded-2xl bg-[#091b35] text-white p-5 shadow-xs">
+        <h1 className="font-display text-2xl sm:text-3xl font-black uppercase flex items-center gap-2">
+          <Trophy className="w-6 h-6 text-[#facc15]" />
+          <span>Classement des Joueurs MYBET</span>
         </h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Top des comptes SPORTZONE classés par solde virtuel (DT) et taux de réussite
+        <p className="text-xs font-bold text-blue-100 mt-1">
+          Top des comptes MYBET classés par solde (DT) et taux de réussite
         </p>
       </div>
 
@@ -131,13 +131,13 @@ export function PromotionsView({ onNavigate }: { onNavigate: (route: AppRoute) =
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
-        <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-          <Gift className="w-5 h-5 text-[#0a58ca]" />
-          <span>Bonus Sports &amp; Récompenses</span>
+      <div className="rounded-2xl bg-[#091b35] text-white p-5 shadow-xs">
+        <h1 className="font-display text-2xl sm:text-3xl font-black uppercase flex items-center gap-2">
+          <Gift className="w-6 h-6 text-[#facc15]" />
+          <span>Bonus Sports &amp; Récompenses MYBET</span>
         </h1>
-        <p className="text-xs text-slate-500 mt-1">
-          Tous les bonus attribuent des crédits virtuels DT sur votre portefeuille SPORTZONE
+        <p className="text-xs font-bold text-blue-100 mt-1">
+          Tous les bonus attribuent des crédits DT sur votre portefeuille MYBET
         </p>
       </div>
 
@@ -200,7 +200,7 @@ export function PromotionsView({ onNavigate }: { onNavigate: (route: AppRoute) =
       <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 flex items-center gap-3 text-xs text-slate-700">
         <Award className="w-4 h-4 text-[#0a58ca] shrink-0" />
         <span>
-          Les crédits virtuels DT servent uniquement aux paris sportifs simulés et à l&apos;analyse des matchs sur SPORTZONE.
+          Les crédits DT servent aux paris sportifs et à l&apos;analyse des matchs sur MYBET.
         </span>
       </div>
     </div>

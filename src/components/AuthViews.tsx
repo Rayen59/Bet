@@ -30,7 +30,7 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
     try {
       if (mode === 'login') {
         await loginWithEmail(email, password);
-        showToast('Connecté à SPORTZONE.', 'success');
+        showToast('Connecté à MYBET.', 'success');
         onNavigate('home');
       } else if (mode === 'register') {
         await registerWithEmail(username, email, password);
@@ -107,20 +107,20 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
   return (
     <div className="max-w-md mx-auto py-8 px-2">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 space-y-5 shadow-md">
-        {/* Clean Brand Header matching Reference Screenshot 2 */}
+        {/* Clean Brand Header */}
         <div className="space-y-2">
           <div className="flex items-center gap-2.5">
-            <span className="inline-flex items-center justify-center rounded-lg bg-[#0a58ca] px-2.5 py-1 text-xs font-extrabold text-white">
-              SZ
+            <span className="inline-flex items-center justify-center rounded-lg bg-[#091b35] px-2.5 py-1 text-xs font-black text-[#facc15]">
+              MYBET
             </span>
-            <h1 className="font-heading text-xl font-extrabold text-slate-900">
-              {mode === 'reset-password' ? 'Réinitialisation' : 'Connexion SPORTZONE'}
+            <h1 className="font-display text-2xl font-black uppercase text-[#091b35]">
+              {mode === 'reset-password' ? 'Réinitialisation' : 'Connexion MYBET'}
             </h1>
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs font-bold text-slate-600">
             {mode === 'reset-password'
               ? 'Générez un code de vérification pour réinitialiser votre mot de passe.'
-              : 'Portail Sportif en Temps Réel • SPORTZONE'}
+              : 'Portail Sportif Pro • MYBET'}
           </p>
         </div>
 

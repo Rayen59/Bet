@@ -30,7 +30,7 @@ import { useSlip } from './context/SlipContext';
 import { useToast } from './context/ToastContext';
 import { apiFetch } from './lib/api';
 import { AppRoute, CompetitionItem, MatchItem, SportItem } from './types/sportzone';
-import { BrandLogo } from './components/BrandLogo';
+import { BrandLogo, CompetitionCountryBadge } from './components/BrandLogo';
 import { BettingSlip } from './components/BettingSlip';
 import { HomeAndMatchesView } from './components/HomeAndMatchesView';
 import { MatchDetailView } from './components/MatchDetailView';
@@ -41,11 +41,11 @@ import { LeaderboardView, PromotionsView } from './components/CommunityViews';
 import { AdminDashboardView } from './components/AdminDashboardView';
 
 function SportIcon({ slug }: { slug: string }) {
-  if (slug === 'basketball') return <CircleDot className="w-4 h-4 text-amber-600 shrink-0" />;
-  if (slug === 'tennis') return <Disc className="w-4 h-4 text-emerald-600 shrink-0" />;
-  if (slug === 'volleyball') return <Globe className="w-4 h-4 text-sky-600 shrink-0" />;
-  if (slug === 'esports') return <Gamepad2 className="w-4 h-4 text-indigo-600 shrink-0" />;
-  return <Trophy className="w-4 h-4 text-[#0a58ca] shrink-0" />;
+  if (slug === 'basketball') return <CircleDot className="w-4 h-4 text-amber-500 shrink-0" />;
+  if (slug === 'tennis') return <Disc className="w-4 h-4 text-emerald-500 shrink-0" />;
+  if (slug === 'volleyball') return <Globe className="w-4 h-4 text-sky-500 shrink-0" />;
+  if (slug === 'esports') return <Gamepad2 className="w-4 h-4 text-violet-500 shrink-0" />;
+  return <Trophy className="w-4 h-4 text-[#1472e5] shrink-0" />;
 }
 
 export default function App() {
@@ -65,6 +65,8 @@ export default function App() {
   const [liveTotal, setLiveTotal] = useState(0);
   const [loadingMatches, setLoadingMatches] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCompetitionSlug, setSelectedCompetitionSlug] = useState<string>('all');
+  const [sidebarLeagueSearch, setSidebarLeagueSearch] = useState('');
 
   const loadCatalogAndMatches = useCallback(
     async (silent = false) => {
@@ -73,9 +75,22 @@ export default function App() {
           apiFetch<{ sports: SportItem[]; competitions: CompetitionItem[] }>('/api/sports'),
           apiFetch<{ matches: MatchItem[]; liveTotal: number }>('/api/matches'),
         ]);
-        setSports(sportsRes.sports);
+        const uniqueMatches = matchesRes.matches;
+        const countBySport = new Map<string, { total: number; live: number }>();
+        for (const m of uniqueMatches) {
+          const cur = countBySport.get(m.sportSlug) || { total: 0, live: 0 };
+          cur.total += 1;
+          if (m.status === 'live') cur.live += 1;
+          countBySport.set(m.sportSlug, cur);
+        }
+        setSports(
+          sportsRes.sports.map((sp) => {
+            const c = countBySport.get(sp.slug);
+            return c ? { ...sp, totalCount: c.total, liveCount: c.live } : sp;
+          })
+        );
         setCompetitions(sportsRes.competitions);
-        setMatches(matchesRes.matches);
+        setMatches(uniqueMatches);
         setLiveTotal(matchesRes.liveTotal);
       } catch (err: any) {
         if (!silent) {
@@ -141,14 +156,39 @@ export default function App() {
     esports: 'sport-esports',
   };
 
+  const sidebarCompetitions = React.useMemo(() => {
+    const map = new Map<string, { slug: string; name: string; country: string; count: number; live: number }>();
+    for (const m of matches) {
+      const slug = m.competitionSlug || m.competitionName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const cur = map.get(slug);
+      if (cur) {
+        cur.count += 1;
+        if (m.status === 'live') cur.live += 1;
+      } else {
+        map.set(slug, {
+          slug,
+          name: m.competitionName || 'Compétition',
+          country: m.competitionCountry || 'International',
+          count: 1,
+          live: m.status === 'live' ? 1 : 0,
+        });
+      }
+    }
+    const q = sidebarLeagueSearch.trim().toLowerCase();
+    return Array.from(map.values())
+      .filter((c) => !q || c.name.toLowerCase().includes(q) || c.country.toLowerCase().includes(q))
+      .sort((a, b) => (b.live !== a.live ? b.live - a.live : b.count - a.count))
+      .slice(0, 14);
+  }, [matches, sidebarLeagueSearch]);
+
   const betBuilderGroupCount = matchGroups.filter((g) => g.isBetBuilder).length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f4f7fb] text-slate-900 pb-20 lg:pb-0">
-      {/* Crisp White Header matching Reference Screenshots 1 & 3 */}
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-2xs">
+    <div className="min-h-screen flex flex-col bg-[#eef2f7] text-slate-950 pb-20 lg:pb-0">
+      {/* 1xBet / MyBet Dark Navy Sportsbook Header */}
+      <header className="sticky top-0 z-40 bg-[#091b35] text-white border-b border-[#163664] shadow-md">
         <div className="max-w-[1640px] mx-auto px-3 sm:px-6 h-15 flex items-center justify-between gap-3 sm:gap-5">
-          {/* Left: Compact Menu Button + Brand Logo */}
+          {/* Left: Compact Menu Button + MYBET Logo */}
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -156,7 +196,7 @@ export default function App() {
                 setDrawerTab('main');
                 setAccountDrawerOpen(true);
               }}
-              className="w-9 h-9 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 transition-colors"
+              className="w-9 h-9 rounded-lg border border-white/15 bg-white/10 hover:bg-white/20 text-white flex items-center justify-center shrink-0 transition-colors"
               aria-label="Ouvrir le menu"
             >
               <Menu className="w-4 h-4" />
@@ -164,27 +204,30 @@ export default function App() {
 
             <button
               type="button"
-              onClick={() => navigate('home')}
-              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0a58ca] rounded-lg"
+              onClick={() => {
+                setSelectedCompetitionSlug('all');
+                navigate('home');
+              }}
+              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#38bdf8] rounded-lg"
             >
-              <BrandLogo />
+              <BrandLogo tone="dark" />
             </button>
           </div>
 
           {/* Center Search Bar (desktop) */}
-          <div className="hidden md:flex flex-1 max-w-sm relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+          <div className="hidden md:flex flex-1 max-w-md relative">
+            <Search className="w-4 h-4 text-blue-300 absolute left-3.5 top-2.5 pointer-events-none" />
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
                 if (route !== 'home' && route !== 'live' && !route.startsWith('sport-')) {
-                  setRoute('live');
+                  setRoute('home');
                 }
               }}
-              placeholder="Rechercher équipe, ligue..."
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-[#0a58ca] focus:bg-white focus:outline-none transition-colors"
+              placeholder="Rechercher équipe, joueur, championnat..."
+              className="w-full rounded-xl border border-white/20 bg-white/10 pl-10 pr-3 py-2 text-xs font-bold text-white placeholder-blue-200/75 focus:border-[#38bdf8] focus:bg-[#0f294d] focus:outline-none transition-colors"
             />
           </div>
 
@@ -196,10 +239,10 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => navigate('recharge')}
-                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[#059669] hover:bg-[#047857] text-white font-bold px-3 py-2 text-xs whitespace-nowrap shrink-0 transition-colors"
+                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[#16a34a] hover:bg-[#15803d] text-white font-black px-3.5 py-2 text-xs whitespace-nowrap shrink-0 transition-colors shadow-sm"
                   >
                     <Wallet className="w-3.5 h-3.5" />
-                    <span>+ Recharger</span>
+                    <span>+ Déposer</span>
                   </button>
                 )}
 
@@ -209,18 +252,18 @@ export default function App() {
                     setDrawerTab('user');
                     setAccountDrawerOpen(true);
                   }}
-                  className="flex items-center gap-2 rounded-full border border-slate-200 bg-white hover:bg-slate-50 pl-1.5 pr-2.5 py-1 text-xs whitespace-nowrap shrink-0 transition-colors shadow-2xs"
+                  className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 hover:bg-white/15 pl-1.5 pr-2.5 py-1 text-xs whitespace-nowrap shrink-0 transition-colors"
                 >
-                  <span className="w-6 h-6 rounded-full bg-[#0a58ca] text-white flex items-center justify-center font-bold text-[11px] shrink-0">
+                  <span className="w-6 h-6 rounded-full bg-[#1472e5] text-white flex items-center justify-center font-black text-[11px] shrink-0">
                     {user.username.slice(0, 1).toUpperCase()}
                   </span>
-                  <span className="hidden sm:inline font-semibold text-slate-800 max-w-[110px] truncate">
+                  <span className="hidden sm:inline font-extrabold text-white max-w-[110px] truncate">
                     {user.username}
                   </span>
-                  <span className="rounded-full bg-[#0a58ca] text-white font-mono-tabular font-bold px-2.5 py-0.5 text-[11px]">
+                  <span className="rounded-full bg-[#facc15] text-[#091b35] font-mono-tabular font-black px-2.5 py-0.5 text-[11px]">
                     {user.virtualBalance.toFixed(2)} DT
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  <ChevronDown className="w-3.5 h-3.5 text-blue-200" />
                 </button>
 
                 <button
@@ -230,7 +273,7 @@ export default function App() {
                     showToast('Déconnecté.', 'info');
                     navigate('home');
                   }}
-                  className="hidden sm:inline-flex w-8 h-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 items-center justify-center transition-colors"
+                  className="hidden sm:inline-flex w-8 h-8 rounded-lg border border-white/15 bg-white/10 hover:bg-white/20 text-blue-100 hover:text-white items-center justify-center transition-colors"
                   title="Déconnexion"
                   aria-label="Déconnexion"
                 >
@@ -242,7 +285,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => navigate('login')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a58ca] hover:bg-[#0847a8] text-white font-bold text-xs transition-colors whitespace-nowrap shrink-0 shadow-2xs"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#16a34a] hover:bg-[#15803d] text-white font-black text-xs transition-colors whitespace-nowrap shrink-0 shadow-sm"
                 >
                   <UserIcon className="w-3.5 h-3.5" />
                   <span>Connexion</span>
@@ -252,16 +295,19 @@ export default function App() {
           </div>
         </div>
 
-        {/* Single-Line Horizontal Tab Bar matching Screenshots 1 & 3 */}
-        <div className="border-t border-slate-100 bg-white">
-          <nav className="max-w-[1640px] mx-auto px-3 sm:px-6 flex items-center gap-5 sm:gap-7 overflow-x-auto text-xs sm:text-[13px] font-semibold">
+        {/* Single-Line Bold Command Navigation Bar */}
+        <div className="border-t border-white/10 bg-[#0d2444]">
+          <nav className="max-w-[1640px] mx-auto px-3 sm:px-6 flex items-center gap-5 sm:gap-7 overflow-x-auto text-xs sm:text-[13px] font-extrabold">
             <button
               type="button"
-              onClick={() => navigate('home')}
+              onClick={() => {
+                setSelectedCompetitionSlug('all');
+                navigate('home');
+              }}
               className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
                 route === 'home'
-                  ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
+                  ? 'border-[#facc15] text-[#facc15]'
+                  : 'border-transparent text-slate-200 hover:text-white'
               }`}
             >
               Accueil
@@ -271,14 +317,25 @@ export default function App() {
               onClick={() => navigate('live')}
               className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors ${
                 route === 'live'
-                  ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
+                  ? 'border-[#facc15] text-[#facc15]'
+                  : 'border-transparent text-slate-200 hover:text-white'
               }`}
             >
-              <span>Live</span>
-              <span className="rounded bg-[#dc2626] px-1.5 py-0.5 font-mono-tabular text-[10px] font-extrabold text-white leading-none">
+              <span>Paris en Direct</span>
+              <span className="rounded bg-[#dc2626] px-1.5 py-0.5 font-mono-tabular text-[10px] font-black text-white leading-none">
                 {liveTotal}
               </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('sport-football')}
+              className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
+                route.startsWith('sport-')
+                  ? 'border-[#facc15] text-[#facc15]'
+                  : 'border-transparent text-slate-200 hover:text-white'
+              }`}
+            >
+              Sports
             </button>
             {user?.role !== 'admin' && (
               <button
@@ -286,11 +343,11 @@ export default function App() {
                 onClick={() => navigate('recharge')}
                 className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
                   route === 'recharge'
-                    ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
-                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                    ? 'border-[#facc15] text-[#facc15]'
+                    : 'border-transparent text-emerald-300 hover:text-emerald-200'
                 }`}
               >
-                Recharger
+                Recharger (DT)
               </button>
             )}
             <button
@@ -298,8 +355,8 @@ export default function App() {
               onClick={() => navigate('leaderboard')}
               className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
                 route === 'leaderboard'
-                  ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
+                  ? 'border-[#facc15] text-[#facc15]'
+                  : 'border-transparent text-slate-200 hover:text-white'
               }`}
             >
               Classement
@@ -309,8 +366,8 @@ export default function App() {
               onClick={() => navigate('promotions')}
               className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
                 route === 'promotions'
-                  ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
+                  ? 'border-[#facc15] text-[#facc15]'
+                  : 'border-transparent text-slate-200 hover:text-white'
               }`}
             >
               Promotions
@@ -321,8 +378,8 @@ export default function App() {
                 onClick={() => navigate('history')}
                 className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
                   route === 'dashboard' || route === 'history' || route === 'profile'
-                    ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
-                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                    ? 'border-[#facc15] text-[#facc15]'
+                    : 'border-transparent text-slate-200 hover:text-white'
                 }`}
               >
                 Mes Paris
@@ -334,8 +391,8 @@ export default function App() {
                 onClick={() => navigate('admin')}
                 className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
                   route === 'admin'
-                    ? 'border-[#dc2626] text-[#dc2626] font-extrabold'
-                    : 'border-transparent text-[#dc2626] hover:text-rose-700 font-bold'
+                    ? 'border-[#facc15] text-[#facc15]'
+                    : 'border-transparent text-rose-300 hover:text-rose-200'
                 }`}
               >
                 Admin
@@ -355,8 +412,8 @@ export default function App() {
             className="max-w-sm w-full h-full flex flex-col bg-white border-r border-slate-200 overflow-y-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200">
-              <BrandLogo />
+            <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200 bg-[#091b35]">
+              <BrandLogo tone="dark" />
               <button
                 type="button"
                 onClick={() => setAccountDrawerOpen(false)}
@@ -423,10 +480,10 @@ export default function App() {
               ) : (
                 <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-heading text-sm font-bold text-slate-900">
-                      Bienvenue sur SPORTZONE
+                    <p className="font-heading text-sm font-black text-slate-900">
+                      Bienvenue sur MYBET
                     </p>
-                    <p className="text-xs text-slate-500">Connectez-vous pour parier en DT</p>
+                    <p className="text-xs font-bold text-slate-500">Connectez-vous pour parier en DT</p>
                   </div>
                   <button
                     type="button"
@@ -590,28 +647,30 @@ export default function App() {
       )}
 
       {/* Responsive Workspace */}
-      <div className="flex-1 max-w-[1640px] w-full mx-auto px-3 sm:px-5 lg:px-6 py-5 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_370px] xl:grid-cols-[235px_minmax(0,1fr)_380px] gap-5 items-start">
+      <div className="flex-1 max-w-[1640px] w-full mx-auto px-3 sm:px-5 lg:px-6 py-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_370px] xl:grid-cols-[260px_minmax(0,1fr)_380px] gap-4 items-start">
         {/* Left Sidebar (xl+) */}
         <aside className="hidden xl:flex flex-col gap-3.5 sticky top-28">
-          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
-            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+          <div className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-xs">
+            <div className="px-4 py-3 bg-[#091b35] text-xs font-black text-white uppercase tracking-wider">
               Sports A-Z
             </div>
             <div className="p-2 space-y-0.5">
               <button
                 type="button"
                 onClick={() => navigate('live')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-extrabold transition-colors ${
                   route === 'live'
-                    ? 'bg-blue-50 text-[#0a58ca]'
-                    : 'text-slate-700 hover:bg-slate-100'
+                    ? 'bg-blue-50 text-[#1472e5]'
+                    : 'text-slate-900 hover:bg-slate-100'
                 }`}
               >
                 <span className="flex items-center gap-2">
                   <Radio className="w-4 h-4 text-[#dc2626] shrink-0" />
                   <span>Direct &amp; Calendrier</span>
                 </span>
-                <span className="font-mono-tabular text-[#dc2626] font-bold">{liveTotal}</span>
+                <span className="rounded bg-[#dc2626] px-1.5 py-0.5 font-mono-tabular text-[10px] text-white font-black">
+                  {liveTotal}
+                </span>
               </button>
 
               {sports.map((sp) => {
@@ -621,37 +680,90 @@ export default function App() {
                   <button
                     key={sp.id}
                     type="button"
-                    onClick={() => navigate(target)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                    onClick={() => {
+                      setSelectedCompetitionSlug('all');
+                      navigate(target);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-extrabold transition-colors ${
                       active
-                        ? 'bg-blue-50 text-[#0a58ca]'
-                        : 'text-slate-700 hover:bg-slate-100'
+                        ? 'bg-[#1472e5] text-white'
+                        : 'text-slate-900 hover:bg-slate-100'
                     }`}
                   >
                     <span className="flex items-center gap-2 truncate">
                       <SportIcon slug={sp.slug} />
                       <span className="truncate">{sp.name}</span>
                     </span>
-                    <span className="font-mono-tabular text-slate-500">{sp.totalCount ?? 0}</span>
+                    <span className={`font-mono-tabular ${active ? 'text-blue-100' : 'text-slate-600'}`}>
+                      {sp.totalCount ?? 0}
+                    </span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
-            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+          {/* Searchable Championships Sidebar */}
+          <div className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-xs">
+            <div className="px-4 py-3 bg-[#091b35] text-xs font-black text-white uppercase tracking-wider flex items-center justify-between">
+              <span>Championnats</span>
+              <Trophy className="w-3.5 h-3.5 text-[#facc15]" />
+            </div>
+            <div className="p-2.5 border-b border-slate-200 bg-slate-50">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={sidebarLeagueSearch}
+                  onChange={(e) => setSidebarLeagueSearch(e.target.value)}
+                  placeholder="Chercher championnat..."
+                  className="w-full rounded-lg border border-slate-300 bg-white pl-8 pr-2.5 py-1.5 text-[11px] font-bold text-slate-900 placeholder-slate-400 focus:border-[#1472e5] focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="p-1.5 max-h-64 overflow-y-auto space-y-0.5">
+              {sidebarCompetitions.map((comp) => {
+                const active = selectedCompetitionSlug === comp.slug;
+                return (
+                  <button
+                    key={comp.slug}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCompetitionSlug(active ? 'all' : comp.slug);
+                      if (route !== 'home' && route !== 'live' && !route.startsWith('sport-')) {
+                        setRoute('home');
+                      }
+                    }}
+                    className={`w-full flex items-center justify-between gap-1.5 px-2.5 py-2 rounded-lg text-[11px] font-extrabold text-left transition-colors ${
+                      active ? 'bg-[#1472e5] text-white' : 'text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <CompetitionCountryBadge country={comp.country} />
+                      <span className="truncate">{comp.name}</span>
+                    </span>
+                    <span className={`font-mono-tabular shrink-0 ${active ? 'text-blue-100' : 'text-slate-500'}`}>
+                      {comp.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-xs">
+            <div className="px-4 py-3 border-b border-slate-200 bg-slate-100 text-xs font-black text-slate-800 uppercase tracking-wider">
               Menu Rapide
             </div>
-            <div className="p-2 space-y-0.5 text-xs font-semibold">
+            <div className="p-2 space-y-0.5 text-xs font-extrabold">
               {user?.role !== 'admin' && (
                 <button
                   type="button"
                   onClick={() => navigate('recharge')}
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                     route === 'recharge'
-                      ? 'bg-[#059669] text-white font-bold'
-                      : 'text-[#059669] hover:bg-emerald-50'
+                      ? 'bg-[#16a34a] text-white font-black'
+                      : 'text-[#16a34a] hover:bg-emerald-50'
                   }`}
                 >
                   <Wallet className="w-4 h-4" />
@@ -663,11 +775,11 @@ export default function App() {
                 onClick={() => navigate('dashboard')}
                 className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                   route === 'dashboard'
-                    ? 'bg-blue-50 text-[#0a58ca]'
-                    : 'text-slate-700 hover:bg-slate-100'
+                    ? 'bg-blue-50 text-[#1472e5]'
+                    : 'text-slate-800 hover:bg-slate-100'
                 }`}
               >
-                <LayoutDashboard className="w-4 h-4 text-slate-400" />
+                <LayoutDashboard className="w-4 h-4 text-slate-500" />
                 <span>Mon Compte</span>
               </button>
               {user?.role !== 'admin' && (
@@ -676,11 +788,11 @@ export default function App() {
                   onClick={() => navigate('history')}
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                     route === 'history'
-                      ? 'bg-blue-50 text-[#0a58ca]'
-                      : 'text-slate-700 hover:bg-slate-100'
+                      ? 'bg-blue-50 text-[#1472e5]'
+                      : 'text-slate-800 hover:bg-slate-100'
                   }`}
                 >
-                  <History className="w-4 h-4 text-slate-400" />
+                  <History className="w-4 h-4 text-slate-500" />
                   <span>Mes Paris</span>
                 </button>
               )}
@@ -689,11 +801,11 @@ export default function App() {
                 onClick={() => navigate('leaderboard')}
                 className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                   route === 'leaderboard'
-                    ? 'bg-blue-50 text-[#0a58ca]'
-                    : 'text-slate-700 hover:bg-slate-100'
+                    ? 'bg-blue-50 text-[#1472e5]'
+                    : 'text-slate-800 hover:bg-slate-100'
                 }`}
               >
-                <Award className="w-4 h-4 text-slate-400" />
+                <Award className="w-4 h-4 text-slate-500" />
                 <span>Classement</span>
               </button>
               <button
@@ -701,11 +813,11 @@ export default function App() {
                 onClick={() => navigate('promotions')}
                 className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                   route === 'promotions'
-                    ? 'bg-blue-50 text-[#0a58ca]'
-                    : 'text-slate-700 hover:bg-slate-100'
+                    ? 'bg-blue-50 text-[#1472e5]'
+                    : 'text-slate-800 hover:bg-slate-100'
                 }`}
               >
-                <Gift className="w-4 h-4 text-[#0a58ca]" />
+                <Gift className="w-4 h-4 text-[#1472e5]" />
                 <span>Bonus Sports</span>
               </button>
               {user?.role === 'admin' && (
@@ -714,7 +826,7 @@ export default function App() {
                   onClick={() => navigate('admin')}
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                     route === 'admin'
-                      ? 'bg-[#dc2626] text-white font-bold'
+                      ? 'bg-[#dc2626] text-white font-black'
                       : 'text-[#dc2626] hover:bg-rose-50'
                   }`}
                 >
@@ -743,6 +855,8 @@ export default function App() {
               loading={loadingMatches}
               searchQuery={searchQuery}
               onSearchChange={setSearchQuery}
+              selectedCompetitionSlug={selectedCompetitionSlug}
+              onSelectCompetitionSlug={setSelectedCompetitionSlug}
               onNavigate={navigate}
               onSelectMatch={openMatchDetail}
             />

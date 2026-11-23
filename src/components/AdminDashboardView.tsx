@@ -715,8 +715,8 @@ export function AdminDashboardView({
 
                               {dep.method === 'tickets' && dep.ticketCodes.length > 0 && (
                                 <div className="pt-1 space-y-1">
-                                  <p className="text-[11px] font-semibold text-slate-600">
-                                    Codes Tickets ({dep.ticketCodes.length} × 2.00 DT) :
+                                  <p className="text-[11px] font-bold text-slate-700">
+                                    Codes Tickets ({dep.ticketCodes.length} × 1.200 DT) :
                                   </p>
                                   <div className="flex flex-wrap gap-1.5">
                                     {dep.ticketCodes.map((code, i) => (

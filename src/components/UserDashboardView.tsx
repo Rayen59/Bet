@@ -403,8 +403,8 @@ export function UserDashboardView({
                     <Wallet className="w-4 h-4 text-[#0a58ca]" />
                     <span>Recharger mon compte (Min 5.00 DT pour parier)</span>
                   </h2>
-                  <p className="text-xs text-slate-500">
-                    Tickets Ooredoo, Orange, Tunisie Telecom (2.00 DT / ticket) ou transfert D17 avec capture d’écran.
+                  <p className="text-xs font-bold text-slate-600">
+                    Tickets Ooredoo, Orange, Tunisie Telecom (1.200 DT / ticket) ou transfert D17 avec capture d’écran.
                   </p>
                 </div>
 

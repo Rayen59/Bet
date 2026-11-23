@@ -254,19 +254,19 @@ export function BettingSlip({ matches = [], onNavigate, onBetPlaced }: BettingSl
       : [];
 
   return (
-    <div className="flex flex-col h-full bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-      {/* Crisp Cobalt Header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-[#0a58ca] text-white">
+    <div className="flex flex-col h-full bg-white border border-slate-300 rounded-2xl overflow-hidden shadow-md">
+      {/* Bold MYBET Navy Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-[#091b35] text-white border-b border-[#163664]">
         <div className="flex items-center gap-4">
           <button
             type="button"
             onClick={() => setActiveTab('betslip')}
-            className={`flex items-center gap-1.5 font-heading text-xs font-extrabold tracking-wide uppercase transition-opacity ${
-              activeTab === 'betslip' ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+            className={`flex items-center gap-1.5 font-heading text-xs font-black tracking-wide uppercase transition-opacity ${
+              activeTab === 'betslip' ? 'text-[#facc15]' : 'text-slate-200 hover:text-white'
             }`}
           >
             <span>TICKET</span>
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-white text-[#0a58ca] font-mono-tabular text-[11px] font-extrabold">
+            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#facc15] text-[#091b35] font-mono-tabular text-[11px] font-black">
               {selections.length}
             </span>
           </button>
@@ -274,13 +274,13 @@ export function BettingSlip({ matches = [], onNavigate, onBetPlaced }: BettingSl
           <button
             type="button"
             onClick={() => setActiveTab('mybets')}
-            className={`inline-flex items-center gap-1.5 font-heading text-xs font-extrabold tracking-wide uppercase transition-opacity ${
+            className={`inline-flex items-center gap-1.5 font-heading text-xs font-black tracking-wide uppercase transition-opacity ${
               activeTab === 'mybets'
-                ? 'opacity-100 underline underline-offset-4'
-                : 'opacity-75 hover:opacity-100'
+                ? 'text-[#facc15] underline underline-offset-4'
+                : 'text-slate-200 hover:text-white'
             }`}
           >
-            <Radio className="w-3.5 h-3.5 text-emerald-300" />
+            <Radio className="w-3.5 h-3.5 text-emerald-400" />
             <span>MES PARIS</span>
           </button>
         </div>

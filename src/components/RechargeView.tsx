@@ -196,8 +196,8 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
         <h1 className="font-heading text-2xl font-extrabold text-slate-900">
           Recharger votre compte
         </h1>
-        <p className="text-sm text-slate-600 max-w-md mx-auto">
-          Connectez-vous pour recharger par tickets (Ooredoo, Orange, Tunisie Telecom — 2 DT / ticket) ou par D17 avec capture d’écran.
+        <p className="text-sm font-semibold text-slate-600 max-w-md mx-auto">
+          Connectez-vous pour recharger par tickets (Ooredoo, Orange, Tunisie Telecom — <strong className="text-slate-900">1.200 DT / ticket</strong>) ou par D17 avec capture d’écran.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <OoredooLogo className="h-8 w-auto" />
@@ -251,7 +251,7 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
     operator === 'Tunisie Telecom' ? /^\d{13,14}$/.test(code) : /^\d{14}$/.test(code);
 
   const validCodesCount = ticketCodes.filter((c) => isCodeValid(c)).length;
-  const ticketsTotalDt = ticketCodes.filter((c) => c.length > 0).length * 2;
+  const ticketsTotalDt = Math.round(validCodesCount * 1.2 * 1000) / 1000;
 
   const handleSelectGalleryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -296,7 +296,7 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
       setTicketNote('');
       await loadMyDeposits(true);
       showToast(
-        `Demande envoyée (${cleaned.length} ticket(s) = ${(cleaned.length * 2).toFixed(2)} DT) · En cours de traitement.`,
+        `Demande envoyée (${cleaned.length} ticket(s) = ${(cleaned.length * 1.2).toFixed(3)} DT) · En cours de traitement.`,
         'success'
       );
     } catch (err: any) {
@@ -382,14 +382,14 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
               Recharger mon compte
             </h1>
           </div>
-          <p className="text-xs text-slate-600">
-            Mise minimum pour parier : <strong className="text-[#0a58ca]">5.00 DT</strong> · Chaque ticket validé ajoute <strong className="text-emerald-600">2.00 DT</strong> au solde.
+          <p className="text-xs font-bold text-slate-600">
+            Mise minimum pour parier : <strong className="text-[#1472e5]">5.00 DT</strong> · Chaque ticket validé ajoute <strong className="text-emerald-600">1.200 DT</strong> au solde.
           </p>
         </div>
 
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-right">
-          <span className="text-[11px] text-slate-600 font-medium block">Solde actuel</span>
-          <span className="font-mono-tabular text-lg font-extrabold text-[#0a58ca]">
+          <span className="text-[11px] text-slate-600 font-bold block">Solde actuel</span>
+          <span className="font-mono-tabular text-lg font-black text-[#091b35]">
             {user.virtualBalance.toFixed(2)} DT
           </span>
         </div>
@@ -397,31 +397,31 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
 
       {/* Main Split: Recharge Form (left) + Live Admin Contact Chat (right) */}
       <div className="grid lg:grid-cols-[1.25fr_0.95fr] gap-5 items-start">
-        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+        <div className="rounded-2xl border border-slate-300 bg-white overflow-hidden shadow-xs">
           {/* Method Switcher Tabs */}
-          <div className="grid grid-cols-2 border-b border-slate-200 bg-slate-50">
+          <div className="grid grid-cols-2 border-b border-slate-200 bg-[#091b35]">
             <button
               type="button"
               onClick={() => setMethod('tickets')}
-              className={`py-3.5 px-4 flex items-center justify-center gap-2 font-heading text-xs sm:text-sm font-bold border-b-2 -mb-px transition-colors ${
+              className={`py-3.5 px-4 flex items-center justify-center gap-2 font-heading text-xs sm:text-sm font-black border-b-2 transition-colors ${
                 method === 'tickets'
-                  ? 'border-[#0a58ca] bg-white text-[#0a58ca]'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
+                  ? 'border-[#facc15] bg-[#143568] text-white'
+                  : 'border-transparent text-slate-300 hover:text-white'
               }`}
             >
-              <Ticket className="w-4 h-4 shrink-0" />
-              <span>Tickets (2 DT / ticket)</span>
+              <Ticket className="w-4 h-4 shrink-0 text-[#facc15]" />
+              <span>Tickets (1.200 DT / ticket)</span>
             </button>
             <button
               type="button"
               onClick={() => setMethod('D17')}
-              className={`py-3.5 px-4 flex items-center justify-center gap-2 font-heading text-xs sm:text-sm font-bold border-b-2 -mb-px transition-colors ${
+              className={`py-3.5 px-4 flex items-center justify-center gap-2 font-heading text-xs sm:text-sm font-black border-b-2 transition-colors ${
                 method === 'D17'
-                  ? 'border-[#0a58ca] bg-white text-[#0a58ca]'
-                  : 'border-transparent text-slate-500 hover:text-slate-900'
+                  ? 'border-[#facc15] bg-[#143568] text-white'
+                  : 'border-transparent text-slate-300 hover:text-white'
               }`}
             >
-              <Smartphone className="w-4 h-4 shrink-0" />
+              <Smartphone className="w-4 h-4 shrink-0 text-[#38bdf8]" />
               <span>D17 + Capture d’écran</span>
             </button>
           </div>
@@ -429,15 +429,15 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
           {method === 'tickets' ? (
             <form onSubmit={handleSubmitTickets} className="p-4 sm:p-5 space-y-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-600 block">
+                <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
                   1. Choisissez votre opérateur
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   {(
                     [
-                      { id: 'Ooredoo', sub: '14 chiffres · 2 DT/ticket', Logo: OoredooLogo },
-                      { id: 'Orange', sub: '14 chiffres · 2 DT/ticket', Logo: OrangeLogo },
-                      { id: 'Tunisie Telecom', sub: '13-14 chiffres · 2 DT/ticket', Logo: TunisieTelecomLogo },
+                      { id: 'Ooredoo', sub: '14 chiffres · 1.200 DT/ticket', Logo: OoredooLogo },
+                      { id: 'Orange', sub: '14 chiffres · 1.200 DT/ticket', Logo: OrangeLogo },
+                      { id: 'Tunisie Telecom', sub: '13-14 chiffres · 1.200 DT/ticket', Logo: TunisieTelecomLogo },
                     ] as const
                   ).map((op) => {
                     const active = operator === op.id;
@@ -447,14 +447,14 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
                         key={op.id}
                         type="button"
                         onClick={() => setOperator(op.id)}
-                        className={`rounded-xl border p-3 flex sm:flex-col items-center justify-between sm:justify-center gap-2.5 transition-all min-h-[76px] ${
+                        className={`rounded-xl border-2 p-3 flex sm:flex-col items-center justify-between sm:justify-center gap-2.5 transition-all min-h-[78px] ${
                           active
-                            ? 'border-[#0a58ca] bg-blue-50/70 ring-1 ring-[#0a58ca]'
+                            ? 'border-[#1472e5] bg-blue-50/80 shadow-xs'
                             : 'border-slate-200 bg-slate-50 hover:border-slate-300'
                         }`}
                       >
                         <LogoComp className="h-9 w-auto shrink-0" />
-                        <span className="text-[11px] font-semibold text-slate-600">{op.sub}</span>
+                        <span className="text-[11px] font-extrabold text-slate-700">{op.sub}</span>
                       </button>
                     );
                   })}
@@ -463,11 +463,11 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
 
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  <label className="text-xs font-black uppercase tracking-wider text-slate-700">
                     2. Entrez les numéros de tickets ({requiredDigitsHint})
                   </label>
-                  <span className="text-[11px] font-mono-tabular text-[#0a58ca] font-bold">
-                    1 ticket = 2.00 DT
+                  <span className="text-[11px] font-mono-tabular text-[#1472e5] font-black">
+                    1 ticket = 1.200 DT
                   </span>
                 </div>
 
@@ -529,10 +529,10 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
                   <button
                     type="button"
                     onClick={() => setTicketCodes((prev) => [...prev, ''])}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-slate-300 hover:border-[#0a58ca] px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-[#0a58ca] transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-slate-300 hover:border-[#1472e5] px-3.5 py-2 text-xs font-extrabold text-slate-700 hover:text-[#1472e5] transition-colors"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Ajouter un autre ticket (+2.00 DT)</span>
+                    <span>Ajouter un autre ticket (+1.200 DT)</span>
                   </button>
                 )}
               </div>
@@ -542,27 +542,27 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
                 value={ticketNote}
                 onChange={(e) => setTicketNote(e.target.value)}
                 placeholder="Remarque optionnelle pour l’Admin..."
-                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:border-[#0a58ca] focus:outline-none"
+                className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-900 placeholder-slate-400 focus:border-[#1472e5] focus:outline-none"
               />
 
               <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 flex items-center justify-between text-xs">
                 <div className="space-y-0.5">
-                  <span className="text-slate-600 block">Montant crédité après validation Admin</span>
-                  <span className="font-bold text-slate-900">
-                    {validCodesCount} ticket(s) valide(s) × 2.00 DT
+                  <span className="text-slate-600 font-bold block">Montant crédité après validation Admin</span>
+                  <span className="font-extrabold text-slate-950">
+                    {validCodesCount} ticket(s) valide(s) × 1.200 DT
                   </span>
                 </div>
-                <span className="font-mono-tabular text-lg font-extrabold text-[#0a58ca]">
-                  +{ticketsTotalDt.toFixed(2)} DT
+                <span className="font-mono-tabular text-lg font-black text-[#1472e5]">
+                  +{ticketsTotalDt.toFixed(3)} DT
                 </span>
               </div>
 
               <button
                 type="submit"
                 disabled={submitting || validCodesCount === 0}
-                className="w-full h-11 rounded-xl bg-[#059669] hover:bg-[#047857] disabled:bg-slate-200 disabled:text-slate-400 text-white font-heading font-extrabold uppercase text-xs sm:text-sm tracking-wide transition-colors"
+                className="w-full h-11 rounded-xl bg-[#16a34a] hover:bg-[#15803d] disabled:bg-slate-200 disabled:text-slate-400 text-white font-heading font-black uppercase text-xs sm:text-sm tracking-wide transition-colors"
               >
-                {submitting ? 'Envoi en cours...' : `Envoyer la recharge (${ticketsTotalDt.toFixed(2)} DT)`}
+                {submitting ? 'Envoi en cours...' : `Envoyer la recharge (${ticketsTotalDt.toFixed(3)} DT)`}
               </button>
             </form>
           ) : (
@@ -839,8 +839,8 @@ export function RechargeView({ onNavigate }: RechargeViewProps) {
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-bold text-slate-900">{dep.operator}</span>
-                        <span className="font-mono-tabular font-extrabold text-[#0a58ca]">
-                          +{dep.amount.toFixed(2)} DT
+                        <span className="font-mono-tabular font-black text-[#1472e5]">
+                          +{dep.method === 'tickets' ? dep.amount.toFixed(3) : dep.amount.toFixed(2)} DT
                         </span>
                         <span className="text-[11px] font-mono-tabular text-slate-400">
                           {new Date(dep.createdAt).toLocaleString()}

@@ -1,15 +1,16 @@
 import React from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Layers, Radio } from 'lucide-react';
 import { MatchItem } from '../types/sportzone';
 import { useSlip } from '../context/SlipContext';
-import { TeamBadge } from './BrandLogo';
+import { CompetitionCountryBadge, TeamBadge } from './BrandLogo';
 
 interface MatchRowProps {
   match: MatchItem;
   onSelectMatch: (matchId: number) => void;
+  compactLeagueHeader?: boolean;
 }
 
-export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
+export function MatchRow({ match, onSelectMatch, compactLeagueHeader = false }: MatchRowProps) {
   const { toggleSelection, isSelected, getMatchSelections } = useSlip();
 
   const primaryMarkets = React.useMemo(() => {
@@ -37,158 +38,198 @@ export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
   const isFinished = match.status === 'finished';
   const isLive = match.status === 'live';
 
+  const statusLabel = React.useMemo(() => {
+    if (isLive) {
+      const t = (match.matchTimer || '').trim();
+      if (/^ht$/i.test(t)) return 'MI-TEMPS';
+      return t || 'LIVE';
+    }
+    if (isFinished) return 'TERMINÉ';
+    return `${formattedDate} · ${formattedTime}`;
+  }, [isLive, isFinished, match.matchTimer, formattedDate, formattedTime]);
+
   return (
-    <div className="group rounded-xl border border-slate-200 bg-white hover:border-[#0a58ca]/40 hover:shadow-sm p-4 sm:p-5 transition-all">
-      {/* Top Meta Line */}
-      <div className="flex items-center justify-between gap-2 mb-3.5 text-xs">
-        <div className="flex items-center gap-2 min-w-0 truncate">
-          {isLive ? (
-            <>
-              <span className="inline-flex items-center rounded bg-[#dc2626] px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-white uppercase shrink-0">
-                LIVE
-              </span>
-              <span className="font-mono-tabular font-bold text-[#dc2626] whitespace-nowrap shrink-0">
-                {match.matchTimer}
-              </span>
-            </>
-          ) : (
-            <span className="font-mono-tabular text-slate-600 font-semibold whitespace-nowrap shrink-0">
-              {formattedDate} • {formattedTime}
-            </span>
-          )}
-
-          <span className="text-slate-300">·</span>
-          <span className="text-slate-600 font-medium truncate">
-            {match.competitionCountry ? `${match.competitionCountry} · ` : ''}
-            {match.competitionName}
-          </span>
-
-          {isFinished && (
-            <>
-              <span className="text-slate-300">·</span>
-              <span className="text-slate-500 font-bold uppercase">Terminé</span>
-            </>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => onSelectMatch(match.id)}
-            className={`rounded-md px-2 py-1 text-[11px] font-bold transition-colors leading-none ${
-              matchPicks.length > 0
-                ? 'bg-[#0a58ca] text-white'
-                : 'bg-blue-50 text-[#0a58ca] border border-blue-200 hover:bg-blue-100'
-            }`}
-            title="Ouvrir Bet Builder"
-          >
-            {matchPicks.length > 1 ? `Bet Builder (${matchPicks.length})` : 'Bet Builder'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onSelectMatch(match.id)}
-            className="inline-flex items-center gap-0.5 text-xs font-semibold text-slate-500 hover:text-[#0a58ca] transition-colors whitespace-nowrap"
-          >
-            <span>{secondaryCount > 0 ? `+${secondaryCount} marchés` : 'Détails'}</span>
-            <ChevronRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Matchup + Score + Spacious Light Odds Boxes */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="group bg-white hover:bg-[#f4f8ff] border-b border-slate-200/90 last:border-b-0 px-3 sm:px-4 py-3 transition-colors">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+        {/* Left: Status / Time + Teams + Crisp 1xBet/MyBet Result Box */}
         <button
           type="button"
           onClick={() => onSelectMatch(match.id)}
-          className="flex-1 min-w-0 text-left flex items-center justify-between gap-4 rounded-lg py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0a58ca]"
+          className="flex-1 min-w-0 text-left flex items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1472e5]"
         >
-          <div className="flex flex-col gap-3 min-w-0 flex-1">
-            <div className="flex items-center gap-3 min-w-0">
+          {/* Time / Live Badge Column */}
+          <div className="w-[78px] sm:w-[88px] shrink-0 flex flex-col items-start gap-1">
+            {isLive ? (
+              <span className="inline-flex items-center gap-1 rounded bg-[#dc2626] px-2 py-0.5 font-mono-tabular text-[10px] font-black tracking-wide text-white uppercase shadow-2xs">
+                <Radio className="w-2.5 h-2.5 animate-pulse" />
+                <span>LIVE</span>
+              </span>
+            ) : isFinished ? (
+              <span className="inline-flex items-center rounded bg-slate-800 px-2 py-0.5 font-mono-tabular text-[10px] font-black tracking-wide text-white uppercase">
+                FINI
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded bg-slate-100 border border-slate-300 px-1.5 py-0.5 font-mono-tabular text-[10px] font-extrabold text-slate-800">
+                {formattedTime}
+              </span>
+            )}
+            <span
+              className={`font-mono-tabular text-[11px] font-extrabold truncate max-w-full ${
+                isLive ? 'text-[#dc2626]' : isFinished ? 'text-slate-600' : 'text-slate-500'
+              }`}
+            >
+              {isLive ? statusLabel : isFinished ? `${formattedDate}` : formattedDate}
+            </span>
+          </div>
+
+          {/* Teams Column */}
+          <div className="flex-1 min-w-0 space-y-1.5">
+            {!compactLeagueHeader && (
+              <div className="flex items-center gap-1.5 mb-1">
+                <CompetitionCountryBadge country={match.competitionCountry} />
+                <span className="text-[11px] font-extrabold text-slate-600 truncate">
+                  {match.competitionName}
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2.5 min-w-0">
               <TeamBadge shortName={match.homeTeam.shortName} color={match.homeTeam.logo} size="sm" />
-              <span className="font-heading text-[15px] sm:text-base font-bold text-slate-900 truncate group-hover:text-[#0a58ca] transition-colors">
+              <span className="font-heading text-[14px] sm:text-[15px] font-extrabold text-slate-950 truncate group-hover:text-[#0b56c2] transition-colors">
                 {match.homeTeam.name}
               </span>
             </div>
-            <div className="flex items-center gap-3 min-w-0">
+
+            <div className="flex items-center gap-2.5 min-w-0">
               <TeamBadge shortName={match.awayTeam.shortName} color={match.awayTeam.logo} size="sm" />
-              <span className="font-heading text-[15px] sm:text-base font-bold text-slate-900 truncate group-hover:text-[#0a58ca] transition-colors">
+              <span className="font-heading text-[14px] sm:text-[15px] font-extrabold text-slate-950 truncate group-hover:text-[#0b56c2] transition-colors">
                 {match.awayTeam.name}
               </span>
             </div>
           </div>
 
-          <div className="flex flex-col items-end justify-center gap-3 shrink-0 pr-2">
-            <span
-              className={`font-mono-tabular text-base sm:text-lg font-extrabold min-w-[1.75rem] text-right leading-8 ${
-                isLive ? 'text-[#0a58ca]' : isFinished ? 'text-slate-900' : 'text-slate-400'
-              }`}
-            >
-              {match.status === 'upcoming' ? '–' : match.homeScore}
-            </span>
-            <span
-              className={`font-mono-tabular text-base sm:text-lg font-extrabold min-w-[1.75rem] text-right leading-8 ${
-                isLive ? 'text-[#0a58ca]' : isFinished ? 'text-slate-900' : 'text-slate-400'
-              }`}
-            >
-              {match.status === 'upcoming' ? '–' : match.awayScore}
-            </span>
-          </div>
-        </button>
-
-        {/* Clear, Spacious Odds Buttons */}
-        <div
-          className={`grid gap-2.5 shrink-0 ${
-            primaryMarkets.length === 3 ? 'grid-cols-3 md:w-[320px]' : 'grid-cols-2 md:w-[235px]'
-          }`}
-        >
-          {primaryMarkets.map((mkt) => {
-            const active = isSelected(mkt.id);
-            return (
-              <button
-                key={mkt.id}
-                type="button"
-                disabled={isFinished}
-                onClick={() =>
-                  toggleSelection(
-                    {
-                      matchId: match.id,
-                      marketId: mkt.id,
-                      matchLabel: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
-                      competitionName: match.competitionName,
-                      marketType: mkt.marketType,
-                      selectionName: mkt.selectionName,
-                      simulatedOdds: mkt.simulatedOdds,
-                      status: match.status,
-                      startTime: match.startTime,
-                    },
-                    {
-                      homeName: match.homeTeam.name,
-                      awayName: match.awayTeam.name,
-                    }
-                  )
-                }
-                className={`flex flex-col items-center justify-center rounded-xl px-3 py-2.5 transition-all min-h-[54px] border ${
-                  isFinished
-                    ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
-                    : active
-                    ? 'bg-[#0a58ca] border-[#0a58ca] text-white font-bold shadow-xs'
-                    : 'bg-slate-100/90 hover:bg-blue-50 border-slate-200 hover:border-[#0a58ca]/40 text-slate-900'
+          {/* 1xBet/MyBet Result Capsule */}
+          <div className="shrink-0 flex flex-col items-center justify-center gap-1 pl-1">
+            {match.status === 'upcoming' ? (
+              <div className="w-11 py-2 rounded-lg bg-slate-100 border border-slate-200 text-center">
+                <span className="font-mono-tabular text-[11px] font-black text-slate-500">VS</span>
+              </div>
+            ) : (
+              <div
+                className={`flex flex-col items-center justify-center w-11 rounded-lg py-1 border shadow-2xs ${
+                  isLive
+                    ? 'bg-[#091b35] border-[#1472e5] text-white'
+                    : 'bg-slate-800 border-slate-700 text-white'
                 }`}
               >
                 <span
-                  className={`text-[11px] font-semibold truncate max-w-full ${
-                    active ? 'text-blue-100' : 'text-slate-500'
+                  className={`font-mono-tabular text-[15px] font-black leading-6 ${
+                    isLive ? 'text-[#facc15]' : 'text-white'
                   }`}
                 >
-                  {mkt.selectionName}
+                  {match.homeScore}
                 </span>
-                <span className="font-mono-tabular text-sm font-extrabold mt-0.5">
-                  {mkt.simulatedOdds.toFixed(2)}
+                <span className="w-6 h-px bg-white/15" />
+                <span
+                  className={`font-mono-tabular text-[15px] font-black leading-6 ${
+                    isLive ? 'text-[#facc15]' : 'text-white'
+                  }`}
+                >
+                  {match.awayScore}
                 </span>
-              </button>
-            );
-          })}
+              </div>
+            )}
+          </div>
+        </button>
+
+        {/* Right: Bold 1 | X | 2 Odds Grid + Markets & Bet Builder */}
+        <div className="flex items-center justify-between lg:justify-end gap-2 shrink-0">
+          <div
+            className={`grid gap-1.5 flex-1 lg:flex-initial ${
+              primaryMarkets.length === 3
+                ? 'grid-cols-3 lg:w-[276px]'
+                : 'grid-cols-2 lg:w-[200px]'
+            }`}
+          >
+            {primaryMarkets.map((mkt) => {
+              const active = isSelected(mkt.id);
+              const shortLabel =
+                mkt.selectionName === match.homeTeam.name
+                  ? '1'
+                  : mkt.selectionName === match.awayTeam.name
+                  ? '2'
+                  : mkt.selectionName;
+              return (
+                <button
+                  key={mkt.id}
+                  type="button"
+                  disabled={isFinished}
+                  onClick={() =>
+                    toggleSelection(
+                      {
+                        matchId: match.id,
+                        marketId: mkt.id,
+                        matchLabel: `${match.homeTeam.name} vs ${match.awayTeam.name}`,
+                        competitionName: match.competitionName,
+                        marketType: mkt.marketType,
+                        selectionName: mkt.selectionName,
+                        simulatedOdds: mkt.simulatedOdds,
+                        status: match.status,
+                        startTime: match.startTime,
+                      },
+                      {
+                        homeName: match.homeTeam.name,
+                        awayName: match.awayTeam.name,
+                      }
+                    )
+                  }
+                  className={`flex flex-col items-center justify-center rounded-lg px-2 py-2 transition-all min-h-[48px] border ${
+                    isFinished
+                      ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                      : active
+                      ? 'bg-[#1472e5] border-[#0b4ea2] text-white shadow-sm scale-[1.02]'
+                      : 'bg-[#edf3fb] hover:bg-[#dbeafe] border-[#c8daf3] hover:border-[#1472e5] text-[#091b35]'
+                  }`}
+                >
+                  <span
+                    className={`text-[10px] font-extrabold uppercase tracking-wider leading-none ${
+                      active ? 'text-blue-100' : 'text-slate-600'
+                    }`}
+                  >
+                    {shortLabel}
+                  </span>
+                  <span className="font-mono-tabular text-[14px] font-black mt-1 leading-none">
+                    {mkt.simulatedOdds.toFixed(2)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-col gap-1 shrink-0 w-[64px]">
+            <button
+              type="button"
+              onClick={() => onSelectMatch(match.id)}
+              className={`rounded-lg px-2 py-1.5 text-[11px] font-black inline-flex items-center justify-center gap-0.5 transition-colors border ${
+                matchPicks.length > 0
+                  ? 'bg-[#16a34a] border-[#15803d] text-white'
+                  : 'bg-[#091b35] hover:bg-[#13325f] border-[#091b35] text-white'
+              }`}
+              title="Ouvrir marchés & Bet Builder"
+            >
+              {matchPicks.length > 0 ? (
+                <>
+                  <Layers className="w-3 h-3" />
+                  <span>{matchPicks.length}</span>
+                </>
+              ) : (
+                <>
+                  <span>+{secondaryCount > 0 ? secondaryCount : 1}</span>
+                  <ChevronRight className="w-3 h-3" />
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

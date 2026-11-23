@@ -36,6 +36,7 @@ import {
   VIRTUAL_PROMO_OFFERS,
 } from './services/bettingEngine.ts';
 import {
+  buildMatchDedupeKey,
   buildSimulatedMarketsForSport,
   ensureCoreSeeded,
   ensureDatabaseSeeded,
@@ -84,7 +85,7 @@ app.get('/api/health', async (_req, res) => {
 
   res.status(dbConnected ? 200 : 503).json({
     status: dbConnected ? 'ok' : 'degraded',
-    service: 'SPORTZONE',
+    service: 'MYBET',
     dbConfigured: hasDatabaseConfig,
     dbSource: isUsingMockDb ? 'in-memory' : dbConfigSource,
     dbConnected,
@@ -506,7 +507,7 @@ app.get('/api/matches', async (req, res) => {
       marketsByMatch.set(mkt.matchId, list);
     }
 
-    let hydrated = matchRows.map((m) => {
+    const rawHydrated = matchRows.map((m) => {
       const sport = sportById.get(m.sportId);
       const competition = compById.get(m.competitionId);
       const homeTeam = teamById.get(m.homeTeamId);
@@ -536,6 +537,24 @@ app.get('/api/matches', async (req, res) => {
       };
     });
 
+    // Defensive deduplication so identical fixtures from different providers never repeat
+    const dedupedByPair = new Map<string, (typeof rawHydrated)[number]>();
+    const rankMatch = (item: (typeof rawHydrated)[number]) => {
+      const statusRank = item.status === 'live' ? 300 : item.status === 'upcoming' ? 200 : 100;
+      const srcRank = item.externalId?.startsWith('espn_') ? 30 : item.externalId?.startsWith('ls_') ? 20 : 10;
+      return statusRank + srcRank + Math.min(9, item.markets.length);
+    };
+    for (const item of rawHydrated) {
+      const key = buildMatchDedupeKey(item.sportSlug, item.homeTeam.name, item.awayTeam.name);
+      const existing = dedupedByPair.get(key);
+      if (!existing || rankMatch(item) > rankMatch(existing)) {
+        dedupedByPair.set(key, item);
+      }
+    }
+
+    let hydrated = Array.from(dedupedByPair.values());
+    const totalLiveUnique = hydrated.filter((m) => m.status === 'live').length;
+
     if (sportSlug && sportSlug !== 'all') {
       hydrated = hydrated.filter((m) => m.sportSlug === sportSlug);
     }
@@ -551,6 +570,7 @@ app.get('/api/matches', async (req, res) => {
           m.homeTeam.name.toLowerCase().includes(search) ||
           m.awayTeam.name.toLowerCase().includes(search) ||
           m.competitionName.toLowerCase().includes(search) ||
+          m.competitionCountry.toLowerCase().includes(search) ||
           m.sportName.toLowerCase().includes(search)
       );
     }
@@ -565,7 +585,7 @@ app.get('/api/matches', async (req, res) => {
 
     res.json({
       matches: hydrated,
-      liveTotal: matchRows.filter((m) => m.status === 'live').length,
+      liveTotal: totalLiveUnique,
     });
   } catch (error) {
     console.error('Matches fetch error:', error);
@@ -907,8 +927,8 @@ app.post('/api/deposits', requireAuth, async (req: AuthRequest, res) => {
         }
       }
 
-      // Each ticket = 2 DT
-      const amount = Math.round(cleanedCodes.length * 2 * 100) / 100;
+      // Each ticket = 1.200 DT
+      const amount = Math.round(cleanedCodes.length * 1.2 * 1000) / 1000;
 
       const [created] = await db
         .insert(depositRequests)
@@ -929,7 +949,7 @@ app.post('/api/deposits', requireAuth, async (req: AuthRequest, res) => {
         userId: user.id,
         amount,
         transactionType: 'deposit_pending',
-        description: `[Tickets ${rawOperator} · ${cleanedCodes.length}×2 DT] En cours de traitement`,
+        description: `[Tickets ${rawOperator} · ${cleanedCodes.length}×1.200 DT] En cours de traitement`,
       });
 
       realtimeHub.emitDepositRequested({
@@ -1034,7 +1054,7 @@ app.get('/api/contact/info', async (_req, res) => {
     res.json({
       admin: primaryAdmin,
       acceptedOperators: ['Ooredoo', 'Orange', 'Tunisie Telecom', 'D17'],
-      ticketValueDt: 2,
+      ticketValueDt: 1.2,
       minStakeDt: 5,
     });
   } catch (error) {
