@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Lock, Mail, User as UserIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { apiFetch } from '../lib/api';
@@ -29,11 +30,11 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
     try {
       if (mode === 'login') {
         await loginWithEmail(email, password);
-        showToast('Signed in to SPORTZONE.', 'success');
+        showToast('Connecté à SPORTZONE.', 'success');
         onNavigate('home');
       } else if (mode === 'register') {
         await registerWithEmail(username, email, password);
-        showToast('Account created with 0.00 DT starting balance.', 'success');
+        showToast('Compte créé avec un solde initial de 0.00 DT.', 'success');
         onNavigate('dashboard');
       } else if (mode === 'reset-password') {
         if (resetStep === 'request') {
@@ -59,7 +60,7 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
         }
       }
     } catch (err: any) {
-      const msg = err?.message || 'Authentication failed.';
+      const msg = err?.message || 'Échec de l’authentification.';
       setAuthNotice(msg);
       showToast(msg, 'error');
     } finally {
@@ -72,7 +73,7 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
     setAuthNotice(null);
     try {
       await loginWithGoogle();
-      showToast('Signed in with Google.', 'success');
+      showToast('Connecté avec Google.', 'success');
       onNavigate('home');
     } catch (err: any) {
       const code = String(err?.code || '');
@@ -80,21 +81,21 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
 
       if (code === 'auth/unauthorized-domain' || rawMsg.includes('auth/unauthorized-domain')) {
         const friendly =
-          'Google Sign-In is only enabled on the primary app domain. Please use Email & Password below (works on all domains).';
+          'La connexion Google est disponible sur le domaine principal. Utilisez votre e-mail et mot de passe ci-dessous.';
         setAuthNotice(friendly);
-        showToast('Please sign in or register with Email & Password below.', 'info');
+        showToast('Connectez-vous avec e-mail et mot de passe ci-dessous.', 'info');
         if (typeof document !== 'undefined') {
           document.getElementById('auth-email')?.focus();
         }
       } else if (code === 'auth/popup-closed-by-user') {
-        setAuthNotice('Google sign-in popup was closed. You can try again or use Email & Password below.');
-        showToast('Google sign-in cancelled.', 'info');
+        setAuthNotice('Fenêtre Google fermée. Réessayez ou utilisez votre e-mail ci-dessous.');
+        showToast('Connexion Google annulée.', 'info');
       } else if (code === 'auth/popup-blocked') {
-        const friendly = 'Browser blocked the Google sign-in popup. Allow popups or sign in with Email & Password below.';
+        const friendly = 'Le navigateur a bloqué la fenêtre Google. Autorisez les popups ou utilisez votre e-mail.';
         setAuthNotice(friendly);
         showToast(friendly, 'error');
       } else {
-        const friendly = rawMsg || 'Google sign-in failed or was cancelled.';
+        const friendly = rawMsg || 'La connexion Google a échoué ou a été annulée.';
         setAuthNotice(friendly);
         showToast(friendly, 'error');
       }
@@ -104,38 +105,193 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
   };
 
   return (
-    <div className="max-w-md mx-auto py-8">
-      <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-6 sm:p-8 space-y-6 shadow-2xl">
-        <div className="space-y-1.5">
-          <h1 className="font-display text-2xl font-extrabold text-white">
-            {mode === 'login'
-              ? 'Sign in to SPORTZONE'
-              : mode === 'register'
-              ? 'Create Account'
-              : 'Reset Password'}
-          </h1>
-          <p className="text-sm text-zinc-400">
-            {mode === 'register'
-              ? 'New accounts start at 0.00 DT. An administrator can credit DT to your balance.'
-              : mode === 'reset-password'
-              ? 'Generate a verification code to reset your account password.'
-              : 'Access your DT balance, live tickets, and real-time match center.'}
+    <div className="max-w-md mx-auto py-8 px-2">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 space-y-5 shadow-md">
+        {/* Clean Brand Header matching Reference Screenshot 2 */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2.5">
+            <span className="inline-flex items-center justify-center rounded-lg bg-[#0a58ca] px-2.5 py-1 text-xs font-extrabold text-white">
+              SZ
+            </span>
+            <h1 className="font-heading text-xl font-extrabold text-slate-900">
+              {mode === 'reset-password' ? 'Réinitialisation' : 'Connexion SPORTZONE'}
+            </h1>
+          </div>
+          <p className="text-xs text-slate-500">
+            {mode === 'reset-password'
+              ? 'Générez un code de vérification pour réinitialiser votre mot de passe.'
+              : 'Portail Sportif en Temps Réel • SPORTZONE'}
           </p>
         </div>
 
+        {/* Underline Tab Switcher */}
+        {mode !== 'reset-password' && (
+          <div className="grid grid-cols-2 border-b border-slate-200 text-sm">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthNotice(null);
+                onNavigate('login');
+              }}
+              className={`pb-2.5 font-semibold transition-colors border-b-2 -mb-px ${
+                mode === 'login'
+                  ? 'border-[#0a58ca] text-[#0a58ca]'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Se Connecter
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthNotice(null);
+                onNavigate('register');
+              }}
+              className={`pb-2.5 font-semibold transition-colors border-b-2 -mb-px ${
+                mode === 'register'
+                  ? 'border-[#0a58ca] text-[#0a58ca]'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Créer un Compte
+            </button>
+          </div>
+        )}
+
         {authNotice && (
-          <div className="rounded-lg border border-rose-500/40 bg-rose-950/40 px-3.5 py-2.5 text-xs text-rose-200 leading-relaxed">
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs text-rose-700 leading-relaxed">
             {authNotice}
           </div>
         )}
 
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {mode === 'register' && (
+            <div className="space-y-1.5">
+              <label htmlFor="auth-username" className="block text-xs font-semibold text-slate-700">
+                Nom d&apos;utilisateur
+              </label>
+              <div className="flex items-center gap-2.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 focus-within:border-[#0a58ca] focus-within:ring-2 focus-within:ring-[#0a58ca]/15 transition-all">
+                <UserIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  id="auth-username"
+                  type="text"
+                  required
+                  minLength={3}
+                  maxLength={32}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="ex. Player216"
+                  className="w-full bg-transparent text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <label htmlFor="auth-email" className="block text-xs font-semibold text-slate-700">
+              Adresse E-mail
+            </label>
+            <div className="flex items-center gap-2.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 focus-within:border-[#0a58ca] focus-within:ring-2 focus-within:ring-[#0a58ca]/15 transition-all">
+              <Mail className="w-4 h-4 text-slate-400 shrink-0" />
+              <input
+                id="auth-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nom@exemple.com"
+                className="w-full bg-transparent text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {mode === 'reset-password' && resetStep === 'confirm' && (
+            <>
+              {issuedCode && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-xs text-slate-700 flex items-center justify-between">
+                  <span>Code de vérification :</span>
+                  <strong className="font-mono-tabular text-sm text-[#0a58ca]">{issuedCode}</strong>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <label htmlFor="auth-reset-code" className="block text-xs font-semibold text-slate-700">
+                  Code de réinitialisation
+                </label>
+                <input
+                  id="auth-reset-code"
+                  type="text"
+                  required
+                  value={resetCode}
+                  onChange={(e) => setResetCode(e.target.value)}
+                  placeholder="Code à 6 caractères"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-mono-tabular text-slate-900 placeholder-slate-400 focus:border-[#0a58ca] focus:outline-none"
+                />
+              </div>
+            </>
+          )}
+
+          {(mode !== 'reset-password' || resetStep === 'confirm') && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label htmlFor="auth-password" className="block text-xs font-semibold text-slate-700">
+                  {mode === 'reset-password' ? 'Nouveau mot de passe' : 'Mot de Passe'}
+                </label>
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('reset-password')}
+                    className="text-xs font-medium text-[#0a58ca] hover:underline"
+                  >
+                    Mot de passe oublié ?
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 focus-within:border-[#0a58ca] focus-within:ring-2 focus-within:ring-[#0a58ca]/15 transition-all">
+                <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                <input
+                  id="auth-password"
+                  type="password"
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-transparent text-sm text-slate-900 placeholder-slate-400 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-xl bg-[#0a58ca] hover:bg-[#0847a8] disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 px-4 text-sm transition-colors min-h-[46px] shadow-xs"
+          >
+            {submitting
+              ? 'Veuillez patienter...'
+              : mode === 'login'
+              ? 'Connexion'
+              : mode === 'register'
+              ? 'Créer mon Compte (0.00 DT)'
+              : resetStep === 'request'
+              ? 'Envoyer le code'
+              : 'Confirmer le mot de passe'}
+          </button>
+        </form>
+
         {mode !== 'reset-password' && (
           <>
+            <div className="relative flex items-center">
+              <div className="flex-grow border-t border-slate-200" />
+              <span className="shrink mx-3 text-xs text-slate-400">ou</span>
+              <div className="flex-grow border-t border-slate-200" />
+            </div>
+
             <button
               type="button"
               disabled={submitting}
               onClick={handleGoogleSignIn}
-              className="w-full flex items-center justify-center gap-2.5 rounded-lg border border-zinc-700 bg-[#121214] hover:bg-zinc-900 text-white font-medium py-2.5 px-4 text-sm transition-colors min-h-[44px]"
+              className="w-full flex items-center justify-center gap-2.5 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-800 font-semibold py-2.5 px-4 text-sm transition-colors min-h-[44px]"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -155,148 +311,22 @@ export function AuthViews({ mode, onNavigate }: AuthViewsProps) {
                   d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"
                 />
               </svg>
-              <span>Continue with Google</span>
+              <span>Continuer avec Google</span>
             </button>
-
-            <div className="relative flex items-center py-1">
-              <div className="flex-grow border-t border-zinc-800" />
-              <span className="shrink mx-3 text-xs text-zinc-500">or with email</span>
-              <div className="flex-grow border-t border-zinc-800" />
-            </div>
           </>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {mode === 'register' && (
-            <div className="space-y-1.5">
-              <label htmlFor="auth-username" className="block text-xs font-medium text-zinc-300">
-                Username
-              </label>
-              <input
-                id="auth-username"
-                type="text"
-                required
-                minLength={3}
-                maxLength={32}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. Player216"
-                className="w-full rounded-lg border border-zinc-700 bg-[#121214] px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
-              />
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <label htmlFor="auth-email" className="block text-xs font-medium text-zinc-300">
-              Email Address
-            </label>
-            <input
-              id="auth-email"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="name@example.com"
-              className="w-full rounded-lg border border-zinc-700 bg-[#121214] px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
-            />
+        {mode === 'reset-password' && (
+          <div className="pt-3 border-t border-slate-200 text-center text-xs text-slate-500">
+            <button
+              type="button"
+              onClick={() => onNavigate('login')}
+              className="text-[#0a58ca] hover:underline font-semibold"
+            >
+              Retour à la connexion
+            </button>
           </div>
-
-          {mode === 'reset-password' && resetStep === 'confirm' && (
-            <>
-              {issuedCode && (
-                <div className="rounded-lg border border-[#f5b800]/40 bg-[#f5b800]/10 p-3 text-xs text-[#f5b800] flex items-center justify-between">
-                  <span>Verification Code:</span>
-                  <strong className="font-mono-tabular text-sm text-white">{issuedCode}</strong>
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <label htmlFor="auth-reset-code" className="block text-xs font-medium text-zinc-300">
-                  Reset Code
-                </label>
-                <input
-                  id="auth-reset-code"
-                  type="text"
-                  required
-                  value={resetCode}
-                  onChange={(e) => setResetCode(e.target.value)}
-                  placeholder="Enter 6-character code"
-                  className="w-full rounded-lg border border-zinc-700 bg-[#121214] px-3.5 py-2.5 text-sm font-mono-tabular text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
-                />
-              </div>
-            </>
-          )}
-
-          {(mode !== 'reset-password' || resetStep === 'confirm') && (
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label htmlFor="auth-password" className="block text-xs font-medium text-zinc-300">
-                  {mode === 'reset-password' ? 'New Password' : 'Password'}
-                </label>
-                {mode === 'login' && (
-                  <button
-                    type="button"
-                    onClick={() => onNavigate('reset-password')}
-                    className="text-xs text-[#f5b800] hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                )}
-              </div>
-              <input
-                id="auth-password"
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 6 characters"
-                className="w-full rounded-lg border border-zinc-700 bg-[#121214] px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
-              />
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] disabled:bg-zinc-800 disabled:text-zinc-500 text-[#111111] font-bold py-2.5 px-4 text-sm transition-colors min-h-[44px]"
-          >
-            {submitting
-              ? 'Please wait...'
-              : mode === 'login'
-              ? 'Sign In'
-              : mode === 'register'
-              ? 'Register (0.00 DT)'
-              : resetStep === 'request'
-              ? 'Request Reset Code'
-              : 'Confirm New Password'}
-          </button>
-        </form>
-
-        <div className="pt-2 border-t border-zinc-800 text-center text-xs text-zinc-400 space-y-2">
-          {mode === 'login' ? (
-            <p>
-              New to SPORTZONE?{' '}
-              <button
-                type="button"
-                onClick={() => onNavigate('register')}
-                className="text-[#f5b800] hover:underline font-semibold"
-              >
-                Create an account
-              </button>
-            </p>
-          ) : (
-            <p>
-              Already have an account?{' '}
-              <button
-                type="button"
-                onClick={() => onNavigate('login')}
-                className="text-[#f5b800] hover:underline font-semibold"
-              >
-                Sign in
-              </button>
-            </p>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

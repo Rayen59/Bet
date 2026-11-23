@@ -17,53 +17,56 @@ export function LeaderboardView() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-zinc-800 pb-4">
-        <h1 className="font-display text-2xl font-bold text-white">Simulation Leaderboard</h1>
-        <p className="text-xs text-zinc-400 mt-0.5">
-          Top SPORTZONE accounts ranked by DT Virtual Balance and ticket accuracy
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+          <Trophy className="w-5 h-5 text-[#0a58ca]" />
+          <span>Classement des Joueurs</span>
+        </h1>
+        <p className="text-xs text-slate-500 mt-1">
+          Top des comptes SPORTZONE classés par solde virtuel (DT) et taux de réussite
         </p>
       </div>
 
-      <div className="rounded-xl border border-[#232734] bg-[#13161d] overflow-hidden">
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
         {loading ? (
           <div className="p-6 space-y-3">
-            <div className="h-10 bg-zinc-900 rounded animate-pulse" />
-            <div className="h-10 bg-zinc-900 rounded animate-pulse" />
-            <div className="h-10 bg-zinc-900 rounded animate-pulse" />
+            <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
+            <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
+            <div className="h-10 bg-slate-100 rounded-lg animate-pulse" />
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-800 bg-[#141416] text-xs text-zinc-400">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 uppercase">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Rank</th>
-                  <th className="px-4 py-3 font-medium">Player</th>
-                  <th className="px-4 py-3 font-medium text-right">Slips</th>
-                  <th className="px-4 py-3 font-medium text-right">Win Rate</th>
-                  <th className="px-4 py-3 font-medium text-right">Balance (DT)</th>
+                  <th className="px-4 py-3">Rang</th>
+                  <th className="px-4 py-3">Joueur</th>
+                  <th className="px-4 py-3 text-right">Tickets</th>
+                  <th className="px-4 py-3 text-right">Réussite</th>
+                  <th className="px-4 py-3 text-right">Solde (DT)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/70">
+              <tbody className="divide-y divide-slate-100">
                 {leaders.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-zinc-900/50 transition-colors">
-                    <td className="px-4 py-3 font-mono-tabular font-bold text-zinc-300">
+                  <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3.5 font-mono-tabular font-bold text-slate-700">
                       {entry.rank <= 3 ? (
-                        <span className="inline-flex items-center gap-1.5 text-[#f5b800]">
-                          <Trophy className="w-3.5 h-3.5" />#{entry.rank}
+                        <span className="inline-flex items-center gap-1.5 text-[#0a58ca]">
+                          <Trophy className="w-4 h-4" />#{entry.rank}
                         </span>
                       ) : (
                         `#${entry.rank}`
                       )}
                     </td>
-                    <td className="px-4 py-3 font-semibold text-white">{entry.username}</td>
-                    <td className="px-4 py-3 font-mono-tabular text-right text-zinc-300">
+                    <td className="px-4 py-3.5 font-bold text-slate-900">{entry.username}</td>
+                    <td className="px-4 py-3.5 font-mono-tabular text-right text-slate-600">
                       {entry.totalBets}
                     </td>
-                    <td className="px-4 py-3 font-mono-tabular text-right text-[#f5b800]">
+                    <td className="px-4 py-3.5 font-mono-tabular text-right font-semibold text-[#0a58ca]">
                       {entry.winRate}%
                     </td>
-                    <td className="px-4 py-3 font-mono-tabular font-bold text-right text-emerald-400">
+                    <td className="px-4 py-3.5 font-mono-tabular font-extrabold text-right text-emerald-600">
                       {entry.virtualBalance.toFixed(2)} DT
                     </td>
                   </tr>
@@ -102,7 +105,7 @@ export function PromotionsView({ onNavigate }: { onNavigate: (route: AppRoute) =
 
   const handleClaim = async (code: string) => {
     if (!user) {
-      showToast('Please sign in to claim virtual simulation rewards.', 'info');
+      showToast('Veuillez vous connecter pour réclamer vos bonus.', 'info');
       onNavigate('login');
       return;
     }
@@ -118,69 +121,74 @@ export function PromotionsView({ onNavigate }: { onNavigate: (route: AppRoute) =
       updateLocalBalance(res.updatedBalance);
       await refreshProfile();
       await loadOffers();
-      showToast(`Claimed +${res.offer.rewardCredits.toFixed(2)} DT!`, 'success');
+      showToast(`Bonus crédité : +${res.offer.rewardCredits.toFixed(2)} DT !`, 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Unable to claim virtual reward.', 'error');
+      showToast(err?.message || 'Impossible de réclamer ce bonus.', 'error');
     } finally {
       setClaimingCode(null);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="border-b border-zinc-800 pb-4">
-        <h1 className="font-display text-2xl font-bold text-white">Sports Bonus & Rewards</h1>
-        <p className="text-xs text-zinc-400 mt-0.5">
-          All bonuses grant non-monetary DT simulation credits for SPORTZONE analytics only
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs">
+        <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+          <Gift className="w-5 h-5 text-[#0a58ca]" />
+          <span>Bonus Sports &amp; Récompenses</span>
+        </h1>
+        <p className="text-xs text-slate-500 mt-1">
+          Tous les bonus attribuent des crédits virtuels DT sur votre portefeuille SPORTZONE
         </p>
       </div>
 
       {loading ? (
         <div className="grid sm:grid-cols-3 gap-4">
-          <div className="h-48 rounded-xl bg-zinc-900 border border-zinc-800 animate-pulse" />
-          <div className="h-48 rounded-xl bg-zinc-900 border border-zinc-800 animate-pulse" />
-          <div className="h-48 rounded-xl bg-zinc-900 border border-zinc-800 animate-pulse" />
+          <div className="h-48 rounded-2xl bg-white border border-slate-200 animate-pulse" />
+          <div className="h-48 rounded-2xl bg-white border border-slate-200 animate-pulse" />
+          <div className="h-48 rounded-2xl bg-white border border-slate-200 animate-pulse" />
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {offers.map((offer) => (
             <div
               key={offer.code}
-              className="rounded-xl border border-[#232734] bg-[#13161d] p-5 flex flex-col justify-between gap-4"
+              className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col justify-between gap-4 shadow-xs"
             >
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-zinc-400">
-                  <span className="inline-flex items-center gap-1.5 text-[#f5b800] font-semibold">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span className="inline-flex items-center gap-1.5 text-[#0a58ca] font-bold">
                     <Gift className="w-3.5 h-3.5" />
-                    {offer.cadence === 'daily' ? 'Daily Reward' : 'One-Time Reward'}
+                    {offer.cadence === 'daily' ? 'Bonus Quotidien' : 'Offre Unique'}
                   </span>
-                  <span className="font-mono-tabular text-zinc-500">{offer.code}</span>
+                  <span className="font-mono-tabular text-slate-400">{offer.code}</span>
                 </div>
-                <h2 className="font-display text-lg font-bold text-white">{offer.title}</h2>
-                <p className="text-xs text-zinc-400 leading-relaxed">{offer.description}</p>
+                <h2 className="font-heading text-base font-extrabold text-slate-900">
+                  {offer.title}
+                </h2>
+                <p className="text-xs text-slate-600 leading-relaxed">{offer.description}</p>
               </div>
 
-              <div className="pt-3 border-t border-zinc-800 space-y-3">
+              <div className="pt-3 border-t border-slate-100 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Virtual Bonus</span>
-                  <span className="font-mono-tabular text-base font-bold text-emerald-400">
+                  <span className="text-xs text-slate-500 font-medium">Bonus virtuel</span>
+                  <span className="font-mono-tabular text-base font-extrabold text-emerald-600">
                     +{offer.rewardCredits.toFixed(2)} DT
                   </span>
                 </div>
 
                 {offer.claimed ? (
-                  <div className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-950/20 py-2 text-xs font-semibold text-emerald-400">
+                  <div className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 py-2 text-xs font-bold text-emerald-700">
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>Claimed</span>
+                    <span>Réclamé</span>
                   </div>
                 ) : (
                   <button
                     type="button"
                     disabled={claimingCode === offer.code}
                     onClick={() => handleClaim(offer.code)}
-                    className="w-full rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] disabled:bg-zinc-800 text-[#111111] font-bold py-2 px-4 text-xs transition-colors min-h-[38px]"
+                    className="w-full rounded-xl bg-[#059669] hover:bg-[#047857] disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-2.5 px-4 text-xs transition-colors min-h-[40px]"
                   >
-                    {claimingCode === offer.code ? 'Crediting...' : 'Claim DT Bonus'}
+                    {claimingCode === offer.code ? 'Activation...' : 'Réclamer le Bonus'}
                   </button>
                 )}
               </div>
@@ -189,10 +197,10 @@ export function PromotionsView({ onNavigate }: { onNavigate: (route: AppRoute) =
         </div>
       )}
 
-      <div className="rounded-xl border border-[#232734] bg-[#13161d] p-4 flex items-center gap-3 text-xs text-zinc-400">
-        <Award className="w-4 h-4 text-[#f5b800] shrink-0" />
+      <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 flex items-center gap-3 text-xs text-slate-700">
+        <Award className="w-4 h-4 text-[#0a58ca] shrink-0" />
         <span>
-          Virtual DT credits cannot be exchanged for real money, goods, or services. They exist solely for sports simulation analytics.
+          Les crédits virtuels DT servent uniquement aux paris sportifs simulés et à l&apos;analyse des matchs sur SPORTZONE.
         </span>
       </div>
     </div>

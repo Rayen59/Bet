@@ -2,48 +2,30 @@ import React, { useState } from 'react';
 
 export function BrandLogo({ className = '' }: { className?: string }) {
   return (
-    <div className={`flex items-center gap-1.5 select-none whitespace-nowrap shrink-0 ${className}`}>
-      <span className="font-display text-xl sm:text-2xl font-black tracking-tight uppercase text-[#f5b800] leading-none">
-        SPORT
+    <div className={`flex items-center gap-2.5 select-none whitespace-nowrap shrink-0 ${className}`}>
+      <span className="inline-flex items-center justify-center rounded-lg bg-[#0a58ca] px-2.5 py-1 text-xs font-extrabold tracking-wide text-white shadow-xs">
+        SZ
       </span>
-      <svg
-        width="26"
-        height="26"
-        viewBox="0 0 32 32"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className="shrink-0"
-        aria-hidden="true"
-      >
-        <circle cx="16" cy="16" r="14" fill="#18181b" stroke="#f5b800" strokeWidth="2" />
-        <polygon points="16,7 21,11 19,17 13,17 11,11" fill="#f5b800" />
-        <path
-          d="M16 7V3M21 11L26 9M19 17L23 23M13 17L9 23M11 11L6 9"
-          stroke="#f5b800"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      </svg>
-      <span className="font-display text-xl sm:text-2xl font-black tracking-tight uppercase text-white leading-none">
-        ZONE
+      <span className="font-heading text-base sm:text-lg font-extrabold tracking-tight text-slate-900 leading-none">
+        SPORTZONE
       </span>
     </div>
   );
 }
 
 const KIT_PALETTES = [
-  { primary: '#ffffff', secondary: '#7dd3fc', striped: true },
+  { primary: '#ffffff', secondary: '#0ea5e9', striped: true },
   { primary: '#eab308', secondary: '#b91c1c', striped: true },
   { primary: '#dc2626', secondary: '#ffffff', striped: false },
   { primary: '#2563eb', secondary: '#1e3a8a', striped: true },
   { primary: '#16a34a', secondary: '#ffffff', striped: false },
-  { primary: '#18181b', secondary: '#f5b800', striped: true },
-  { primary: '#f472b6', secondary: '#ec4899', striped: true },
+  { primary: '#0f172a', secondary: '#0a58ca', striped: true },
+  { primary: '#db2777', secondary: '#be185d', striped: true },
 ];
 
 function kitFromSeed(seed: string, fallbackHex: string) {
   if (/^#[0-9A-Fa-f]{3,6}$/.test(fallbackHex)) {
-    return { primary: fallbackHex, secondary: '#18181b', striped: false };
+    return { primary: fallbackHex, secondary: '#0f172a', striped: false };
   }
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
@@ -54,7 +36,7 @@ function kitFromSeed(seed: string, fallbackHex: string) {
 
 export function TeamBadge({
   shortName,
-  color = '#f5b800',
+  color = '#0a58ca',
   size = 'md',
   variant = 'crest',
   striped,
@@ -67,13 +49,13 @@ export function TeamBadge({
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const isUrl = color.startsWith('http://') || color.startsWith('https://');
-  const safeColor = /^#[0-9A-Fa-f]{3,6}$/.test(color) ? color : '#e4e4e7';
+  const safeColor = /^#[0-9A-Fa-f]{3,6}$/.test(color) ? color : '#0a58ca';
   const dim =
     size === 'sm'
-      ? 'w-7 h-7 text-[10px]'
+      ? 'w-8 h-8 text-[10px]'
       : size === 'lg'
-      ? 'w-12 h-12 text-xs'
-      : 'w-11 h-11 text-xs';
+      ? 'w-13 h-13 text-xs'
+      : 'w-10 h-10 text-xs';
 
   if (variant === 'jersey') {
     const kit = kitFromSeed(shortName, color);
@@ -82,7 +64,7 @@ export function TeamBadge({
 
     return (
       <div
-        className={`${dim} rounded-full bg-[#242427] border border-zinc-600/80 flex items-center justify-center shrink-0 shadow-inner`}
+        className={`${dim} rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center shrink-0`}
         title={shortName}
       >
         <svg viewBox="0 0 36 36" className="w-[74%] h-[74%]" aria-hidden="true">
@@ -94,7 +76,7 @@ export function TeamBadge({
           <path
             d="M12 6 L15 8 C16.8 9.2 19.2 9.2 21 8 L24 6 L31 10.5 L28 16 L24.5 14.5 L24.5 30 L11.5 30 L11.5 14.5 L8 16 L5 10.5 Z"
             fill={kit.primary}
-            stroke="#111111"
+            stroke="#334155"
             strokeWidth="1.2"
             strokeLinejoin="round"
           />
@@ -107,7 +89,7 @@ export function TeamBadge({
           <path
             d="M15 8 C16.5 10.2 19.5 10.2 21 8"
             fill="none"
-            stroke="#111111"
+            stroke="#334155"
             strokeWidth="1.3"
           />
         </svg>
@@ -118,7 +100,7 @@ export function TeamBadge({
   if (isUrl && !imgFailed) {
     return (
       <div
-        className={`${dim} rounded-full bg-[#242428] border border-zinc-600/80 flex items-center justify-center p-1.5 shrink-0 overflow-hidden`}
+        className={`${dim} rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-center p-1.5 shrink-0 overflow-hidden`}
       >
         <img
           src={color}
@@ -133,11 +115,11 @@ export function TeamBadge({
 
   return (
     <div
-      className={`${dim} rounded-full border border-zinc-600 flex items-center justify-center font-mono-tabular font-bold tracking-tight shrink-0`}
+      className={`${dim} rounded-xl border border-slate-200 flex items-center justify-center font-mono-tabular font-bold tracking-tight shrink-0`}
       style={{
-        backgroundColor: `${safeColor}24`,
-        color: '#f4f4f5',
-        boxShadow: `inset 0 0 0 1px ${safeColor}60`,
+        backgroundColor: `${safeColor}14`,
+        color: '#0f172a',
+        boxShadow: `inset 0 0 0 1px ${safeColor}35`,
       }}
     >
       {shortName.slice(0, 3).toUpperCase()}

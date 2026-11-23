@@ -41,11 +41,11 @@ import { LeaderboardView, PromotionsView } from './components/CommunityViews';
 import { AdminDashboardView } from './components/AdminDashboardView';
 
 function SportIcon({ slug }: { slug: string }) {
-  if (slug === 'basketball') return <CircleDot className="w-4 h-4 text-amber-400 shrink-0" />;
-  if (slug === 'tennis') return <Disc className="w-4 h-4 text-emerald-400 shrink-0" />;
-  if (slug === 'volleyball') return <Globe className="w-4 h-4 text-sky-400 shrink-0" />;
-  if (slug === 'esports') return <Gamepad2 className="w-4 h-4 text-indigo-400 shrink-0" />;
-  return <Trophy className="w-4 h-4 text-[#f5b800] shrink-0" />;
+  if (slug === 'basketball') return <CircleDot className="w-4 h-4 text-amber-600 shrink-0" />;
+  if (slug === 'tennis') return <Disc className="w-4 h-4 text-emerald-600 shrink-0" />;
+  if (slug === 'volleyball') return <Globe className="w-4 h-4 text-sky-600 shrink-0" />;
+  if (slug === 'esports') return <Gamepad2 className="w-4 h-4 text-indigo-600 shrink-0" />;
+  return <Trophy className="w-4 h-4 text-[#0a58ca] shrink-0" />;
 }
 
 export default function App() {
@@ -79,7 +79,7 @@ export default function App() {
         setLiveTotal(matchesRes.liveTotal);
       } catch (err: any) {
         if (!silent) {
-          showToast(err?.message || 'Unable to load sports catalog.', 'error');
+          showToast(err?.message || 'Impossible de charger les matchs.', 'error');
         }
       } finally {
         setLoadingMatches(false);
@@ -96,6 +96,7 @@ export default function App() {
       es = new EventSource('/api/stream');
       es.addEventListener('matches_updated', () => {
         loadCatalogAndMatches(true);
+        window.dispatchEvent(new CustomEvent('sportzone:matches_updated'));
       });
     } catch {
       // EventSource fallback handled by interval below
@@ -104,6 +105,7 @@ export default function App() {
     const interval = setInterval(() => {
       if (document.visibilityState === 'visible') {
         loadCatalogAndMatches(true);
+        window.dispatchEvent(new CustomEvent('sportzone:matches_updated'));
       }
     }, 5_000);
 
@@ -142,105 +144,36 @@ export default function App() {
   const betBuilderGroupCount = matchGroups.filter((g) => g.isBetBuilder).length;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#111111] text-zinc-100 pb-20 lg:pb-0">
-      {/* Header matching 5f64d28e screenshot */}
-      <header className="sticky top-0 z-40 border-b border-zinc-800/90 bg-[#121214]/95 backdrop-blur-md">
-        <div className="max-w-[1640px] mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3 sm:gap-5">
-          {/* Left: White Square Menu Button + Brand Logo + Nav */}
-          <div className="flex items-center gap-3 sm:gap-5 min-w-0">
+    <div className="min-h-screen flex flex-col bg-[#f4f7fb] text-slate-900 pb-20 lg:pb-0">
+      {/* Crisp White Header matching Reference Screenshots 1 & 3 */}
+      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-2xs">
+        <div className="max-w-[1640px] mx-auto px-3 sm:px-6 h-15 flex items-center justify-between gap-3 sm:gap-5">
+          {/* Left: Compact Menu Button + Brand Logo */}
+          <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
               onClick={() => {
                 setDrawerTab('main');
                 setAccountDrawerOpen(true);
               }}
-              className="w-10 h-10 rounded-lg bg-white hover:bg-zinc-200 text-[#111111] flex items-center justify-center shrink-0 transition-colors"
-              aria-label="Open navigation & account menu"
+              className="w-9 h-9 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 transition-colors"
+              aria-label="Ouvrir le menu"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="w-4 h-4" />
             </button>
 
             <button
               type="button"
               onClick={() => navigate('home')}
-              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5b800] rounded"
+              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0a58ca] rounded-lg"
             >
               <BrandLogo />
             </button>
-
-            <nav className="hidden lg:flex items-center gap-5 text-xs font-heading font-bold uppercase tracking-wide text-zinc-300">
-              <button
-                type="button"
-                onClick={() => navigate('home')}
-                className={`whitespace-nowrap shrink-0 transition-colors hover:text-white ${
-                  route === 'home' ? 'text-[#f5b800]' : ''
-                }`}
-              >
-                Accueil
-              </button>
-              <button
-                type="button"
-                onClick={() => navigate('live')}
-                className={`whitespace-nowrap shrink-0 transition-colors hover:text-white inline-flex items-center gap-1.5 ${
-                  route === 'live' ? 'text-[#f5b800]' : ''
-                }`}
-              >
-                <span>Live</span>
-                <span className="rounded bg-[#e11d2e] px-1.5 py-0.5 font-mono-tabular text-[10px] font-extrabold text-white">
-                  {liveTotal}
-                </span>
-              </button>
-              {user?.role !== 'admin' && (
-                <button
-                  type="button"
-                  onClick={() => navigate('recharge')}
-                  className={`whitespace-nowrap shrink-0 transition-colors hover:text-white inline-flex items-center gap-1.5 ${
-                    route === 'recharge' ? 'text-[#f5b800]' : ''
-                  }`}
-                >
-                  <Wallet className="w-3.5 h-3.5 text-[#f5b800]" />
-                  <span>Recharger</span>
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => navigate('leaderboard')}
-                className={`whitespace-nowrap shrink-0 transition-colors hover:text-white ${
-                  route === 'leaderboard' ? 'text-[#f5b800]' : ''
-                }`}
-              >
-                Classement
-              </button>
-              {user && user.role !== 'admin' && (
-                <button
-                  type="button"
-                  onClick={() => navigate('history')}
-                  className={`whitespace-nowrap shrink-0 transition-colors hover:text-white ${
-                    route === 'dashboard' || route === 'history' || route === 'profile'
-                      ? 'text-[#f5b800]'
-                      : ''
-                  }`}
-                >
-                  Mes Paris
-                </button>
-              )}
-              {user?.role === 'admin' && (
-                <button
-                  type="button"
-                  onClick={() => navigate('admin')}
-                  className={`whitespace-nowrap shrink-0 transition-colors hover:text-[#fbbf24] ${
-                    route === 'admin' ? 'text-[#f5b800] underline underline-offset-4' : 'text-[#f5b800]'
-                  }`}
-                >
-                  Console Admin
-                </button>
-              )}
-            </nav>
           </div>
 
-          {/* Search Bar (desktop) */}
-          <div className="hidden md:flex flex-1 max-w-xs relative">
-            <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5 pointer-events-none" />
+          {/* Center Search Bar (desktop) */}
+          <div className="hidden md:flex flex-1 max-w-sm relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
             <input
               type="search"
               value={searchQuery}
@@ -251,11 +184,11 @@ export default function App() {
                 }
               }}
               placeholder="Rechercher équipe, ligue..."
-              className="w-full rounded-lg border border-zinc-800 bg-[#1c1c1f] pl-9 pr-3 py-2 text-xs text-white placeholder-zinc-400 focus:border-[#f5b800] focus:outline-none"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-[#0a58ca] focus:bg-white focus:outline-none transition-colors"
             />
           </div>
 
-          {/* Right: Wallet + Recharge + Admin / Auth */}
+          {/* Right: User Account Chip / Balance / Connexion */}
           <div className="flex items-center gap-2 shrink-0">
             {user ? (
               <>
@@ -263,7 +196,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => navigate('recharge')}
-                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-2 text-xs whitespace-nowrap shrink-0 transition-colors"
+                    className="hidden sm:inline-flex items-center gap-1.5 rounded-lg bg-[#059669] hover:bg-[#047857] text-white font-bold px-3 py-2 text-xs whitespace-nowrap shrink-0 transition-colors"
                   >
                     <Wallet className="w-3.5 h-3.5" />
                     <span>+ Recharger</span>
@@ -276,68 +209,159 @@ export default function App() {
                     setDrawerTab('user');
                     setAccountDrawerOpen(true);
                   }}
-                  className="flex items-center gap-2 rounded-lg border border-[#f5b800] bg-[#16140e] hover:bg-[#1f1c11] px-3 py-1.5 text-xs whitespace-nowrap shrink-0 transition-colors"
+                  className="flex items-center gap-2 rounded-full border border-slate-200 bg-white hover:bg-slate-50 pl-1.5 pr-2.5 py-1 text-xs whitespace-nowrap shrink-0 transition-colors shadow-2xs"
                 >
-                  <span className="w-5 h-5 rounded-full bg-[#f5b800] text-[#111111] flex items-center justify-center shrink-0">
-                    <UserIcon className="w-3.5 h-3.5" />
+                  <span className="w-6 h-6 rounded-full bg-[#0a58ca] text-white flex items-center justify-center font-bold text-[11px] shrink-0">
+                    {user.username.slice(0, 1).toUpperCase()}
                   </span>
-                  <span className="font-mono-tabular font-bold text-[#f5b800]">
+                  <span className="hidden sm:inline font-semibold text-slate-800 max-w-[110px] truncate">
+                    {user.username}
+                  </span>
+                  <span className="rounded-full bg-[#0a58ca] text-white font-mono-tabular font-bold px-2.5 py-0.5 text-[11px]">
                     {user.virtualBalance.toFixed(2)} DT
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-[#f5b800]" />
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                 </button>
 
-                {user.role === 'admin' && (
-                  <button
-                    type="button"
-                    onClick={() => navigate('admin')}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-2 text-xs whitespace-nowrap shrink-0"
-                  >
-                    <Shield className="w-3.5 h-3.5" />
-                    <span>Admin</span>
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await logout();
+                    showToast('Déconnecté.', 'info');
+                    navigate('home');
+                  }}
+                  className="hidden sm:inline-flex w-8 h-8 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-500 hover:text-slate-800 items-center justify-center transition-colors"
+                  title="Déconnexion"
+                  aria-label="Déconnexion"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
               </>
             ) : (
               <>
                 <button
                   type="button"
                   onClick={() => navigate('login')}
-                  className="px-3.5 py-2 rounded-lg border border-zinc-700 text-xs font-semibold text-zinc-200 hover:text-white transition-colors whitespace-nowrap shrink-0"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0a58ca] hover:bg-[#0847a8] text-white font-bold text-xs transition-colors whitespace-nowrap shrink-0 shadow-2xs"
                 >
-                  Connexion
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate('register')}
-                  className="px-4 py-2 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold text-xs transition-colors whitespace-nowrap shrink-0"
-                >
-                  Inscription
+                  <UserIcon className="w-3.5 h-3.5" />
+                  <span>Connexion</span>
                 </button>
               </>
             )}
           </div>
+        </div>
+
+        {/* Single-Line Horizontal Tab Bar matching Screenshots 1 & 3 */}
+        <div className="border-t border-slate-100 bg-white">
+          <nav className="max-w-[1640px] mx-auto px-3 sm:px-6 flex items-center gap-5 sm:gap-7 overflow-x-auto text-xs sm:text-[13px] font-semibold">
+            <button
+              type="button"
+              onClick={() => navigate('home')}
+              className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
+                route === 'home'
+                  ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Accueil
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('live')}
+              className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 transition-colors ${
+                route === 'live'
+                  ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>Live</span>
+              <span className="rounded bg-[#dc2626] px-1.5 py-0.5 font-mono-tabular text-[10px] font-extrabold text-white leading-none">
+                {liveTotal}
+              </span>
+            </button>
+            {user?.role !== 'admin' && (
+              <button
+                type="button"
+                onClick={() => navigate('recharge')}
+                className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
+                  route === 'recharge'
+                    ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Recharger
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => navigate('leaderboard')}
+              className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
+                route === 'leaderboard'
+                  ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Classement
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('promotions')}
+              className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
+                route === 'promotions'
+                  ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Promotions
+            </button>
+            {user && user.role !== 'admin' && (
+              <button
+                type="button"
+                onClick={() => navigate('history')}
+                className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
+                  route === 'dashboard' || route === 'history' || route === 'profile'
+                    ? 'border-[#0a58ca] text-[#0a58ca] font-bold'
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Mes Paris
+              </button>
+            )}
+            {user?.role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => navigate('admin')}
+                className={`py-2.5 border-b-2 whitespace-nowrap shrink-0 transition-colors ${
+                  route === 'admin'
+                    ? 'border-[#dc2626] text-[#dc2626] font-extrabold'
+                    : 'border-transparent text-[#dc2626] hover:text-rose-700 font-bold'
+                }`}
+              >
+                Admin
+              </button>
+            )}
+          </nav>
         </div>
       </header>
 
       {/* Account / Main Menu Modal Drawer */}
       {accountDrawerOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex justify-start"
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex justify-start"
           onClick={() => setAccountDrawerOpen(false)}
         >
           <div
-            className="max-w-sm w-full h-full flex flex-col bg-[#111111] border-r border-zinc-800 overflow-y-auto"
+            className="max-w-sm w-full h-full flex flex-col bg-white border-r border-slate-200 overflow-y-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-14 px-4 flex items-center justify-between border-b border-zinc-800/80">
-              <div className="w-6" />
+            <div className="h-14 px-4 flex items-center justify-between border-b border-slate-200">
               <BrandLogo />
               <button
                 type="button"
                 onClick={() => setAccountDrawerOpen(false)}
-                className="p-1.5 text-white hover:text-[#f5b800]"
-                aria-label="Close menu"
+                className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                aria-label="Fermer le menu"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -345,33 +369,37 @@ export default function App() {
 
             <div className="p-4 space-y-4 flex-1">
               {user ? (
-                <div className="rounded-xl bg-gradient-to-b from-[#e0a119] to-[#c98b10] text-[#111111] p-4 space-y-3 shadow-lg">
+                <div className="rounded-2xl bg-gradient-to-br from-[#0a58ca] to-[#084298] text-white p-4 space-y-3 shadow-sm">
                   <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-full border-2 border-[#111111] flex items-center justify-center shrink-0">
-                      <UserIcon className="w-6 h-6" />
+                    <div className="w-11 h-11 rounded-full bg-white/15 border border-white/30 flex items-center justify-center shrink-0">
+                      <UserIcon className="w-5 h-5" />
                     </div>
                     <div className="min-w-0">
                       <p className="font-mono-tabular text-sm font-extrabold truncate">
                         #{user.id} · {user.username}
                       </p>
-                      <p className="text-xs font-semibold opacity-80 capitalize">{user.role}</p>
+                      <p className="text-xs font-medium text-blue-100 capitalize">{user.role}</p>
                     </div>
                   </div>
 
-                  <div className="space-y-2 text-xs font-bold pt-1">
-                    <div className="flex justify-between pb-1.5 border-b border-black/15">
-                      <span>Cash:</span>
-                      <span className="font-mono-tabular">DT {user.virtualBalance.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between pb-1.5 border-b border-black/15">
-                      <span>Total Gain:</span>
-                      <span className="font-mono-tabular">
-                        DT {(stats?.totalWonCredits ?? 0).toFixed(2)}
+                  <div className="space-y-2 text-xs font-semibold pt-1">
+                    <div className="flex justify-between pb-1.5 border-b border-white/15">
+                      <span className="text-blue-100">Solde disponible :</span>
+                      <span className="font-mono-tabular font-bold">
+                        {user.virtualBalance.toFixed(2)} DT
                       </span>
                     </div>
-                    <div className="flex justify-between pb-1.5 border-b border-black/15">
-                      <span>Pending Bets:</span>
-                      <span className="font-mono-tabular">{stats?.pendingBets ?? 0}</span>
+                    <div className="flex justify-between pb-1.5 border-b border-white/15">
+                      <span className="text-blue-100">Gains totaux :</span>
+                      <span className="font-mono-tabular font-bold">
+                        {(stats?.totalWonCredits ?? 0).toFixed(2)} DT
+                      </span>
+                    </div>
+                    <div className="flex justify-between pb-1.5 border-b border-white/15">
+                      <span className="text-blue-100">Paris en cours :</span>
+                      <span className="font-mono-tabular font-bold">
+                        {stats?.pendingBets ?? 0}
+                      </span>
                     </div>
                   </div>
 
@@ -383,76 +411,78 @@ export default function App() {
                         setRefreshingUser(true);
                         await refreshProfile();
                         setRefreshingUser(false);
-                        showToast('Balance refreshed.', 'success');
+                        showToast('Solde actualisé.', 'success');
                       }}
-                      className="rounded-md bg-[#f5cb42] hover:bg-[#fde047] text-[#111111] font-bold px-8 py-2 text-xs inline-flex items-center gap-1.5 shadow"
+                      className="rounded-xl bg-white hover:bg-blue-50 text-[#0a58ca] font-bold px-6 py-2 text-xs inline-flex items-center gap-1.5 shadow-xs"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${refreshingUser ? 'animate-spin' : ''}`} />
-                      <span>Refresh</span>
+                      <span>Actualiser</span>
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="rounded-xl bg-[#1c1c1f] border border-zinc-800 p-4 flex items-center justify-between gap-3">
+                <div className="rounded-2xl bg-slate-50 border border-slate-200 p-4 flex items-center justify-between gap-3">
                   <div>
-                    <p className="font-heading text-sm font-bold text-white">Welcome to SPORTZONE</p>
-                    <p className="text-xs text-zinc-400">Sign in to place virtual DT bets</p>
+                    <p className="font-heading text-sm font-bold text-slate-900">
+                      Bienvenue sur SPORTZONE
+                    </p>
+                    <p className="text-xs text-slate-500">Connectez-vous pour parier en DT</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => navigate('login')}
-                    className="rounded-md bg-[#f5b800] text-[#111111] font-bold px-4 py-2 text-xs"
+                    className="rounded-xl bg-[#0a58ca] text-white font-bold px-4 py-2 text-xs"
                   >
-                    Sign In
+                    Connexion
                   </button>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 border-b border-zinc-800 text-xs font-heading font-bold">
+              <div className="grid grid-cols-2 border-b border-slate-200 text-xs font-heading font-bold">
                 <button
                   type="button"
                   onClick={() => setDrawerTab('main')}
                   className={`py-2.5 border-b-2 transition-colors ${
                     drawerTab === 'main'
-                      ? 'border-[#f5b800] text-[#f5b800]'
-                      : 'border-transparent text-zinc-400 hover:text-white'
+                      ? 'border-[#0a58ca] text-[#0a58ca]'
+                      : 'border-transparent text-slate-500 hover:text-slate-900'
                   }`}
                 >
-                  Main Menu
+                  Sports
                 </button>
                 <button
                   type="button"
                   onClick={() => setDrawerTab('user')}
                   className={`py-2.5 border-b-2 transition-colors ${
                     drawerTab === 'user'
-                      ? 'border-[#f5b800] text-[#f5b800]'
-                      : 'border-transparent text-zinc-400 hover:text-white'
+                      ? 'border-[#0a58ca] text-[#0a58ca]'
+                      : 'border-transparent text-slate-500 hover:text-slate-900'
                   }`}
                 >
-                  User Menu
+                  Mon Espace
                 </button>
               </div>
 
               {drawerTab === 'main' ? (
-                <div className="divide-y divide-zinc-800/80 text-sm font-medium">
+                <div className="divide-y divide-slate-100 text-sm font-medium">
                   <button
                     type="button"
                     onClick={() => navigate('home')}
-                    className="w-full flex items-center gap-3 py-3.5 px-2 text-[#f5b800] hover:bg-zinc-900"
+                    className="w-full flex items-center gap-3 py-3.5 px-2 text-[#0a58ca] font-bold hover:bg-slate-50 rounded-lg"
                   >
                     <Trophy className="w-4 h-4" />
-                    <span>Sports Betting</span>
+                    <span>Accueil Sportif</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => navigate('live')}
-                    className="w-full flex items-center justify-between py-3.5 px-2 text-white hover:bg-zinc-900"
+                    className="w-full flex items-center justify-between py-3.5 px-2 text-slate-800 hover:bg-slate-50 rounded-lg"
                   >
                     <span className="flex items-center gap-3">
-                      <Zap className="w-4 h-4 text-[#e11d2e]" />
-                      <span>Live Betting</span>
+                      <Zap className="w-4 h-4 text-[#dc2626]" />
+                      <span>Paris en Direct</span>
                     </span>
-                    <span className="rounded bg-[#e11d2e] px-1.5 py-0.5 text-[11px] font-mono-tabular font-bold">
+                    <span className="rounded bg-[#dc2626] px-1.5 py-0.5 text-[11px] font-mono-tabular font-bold text-white">
                       {liveTotal}
                     </span>
                   </button>
@@ -461,13 +491,13 @@ export default function App() {
                       key={sp.id}
                       type="button"
                       onClick={() => navigate(sportRouteMap[sp.slug] || 'live')}
-                      className="w-full flex items-center justify-between py-3.5 px-2 text-zinc-200 hover:bg-zinc-900"
+                      className="w-full flex items-center justify-between py-3.5 px-2 text-slate-700 hover:bg-slate-50 rounded-lg"
                     >
                       <span className="flex items-center gap-3">
                         <SportIcon slug={sp.slug} />
                         <span>{sp.name}</span>
                       </span>
-                      <span className="font-mono-tabular text-xs text-zinc-400">
+                      <span className="font-mono-tabular text-xs text-slate-500">
                         {sp.totalCount ?? 0}
                       </span>
                     </button>
@@ -475,66 +505,66 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => navigate('promotions')}
-                    className="w-full flex items-center gap-3 py-3.5 px-2 text-zinc-200 hover:bg-zinc-900"
+                    className="w-full flex items-center gap-3 py-3.5 px-2 text-slate-700 hover:bg-slate-50 rounded-lg"
                   >
-                    <Gift className="w-4 h-4 text-[#f5b800]" />
+                    <Gift className="w-4 h-4 text-[#0a58ca]" />
                     <span>Promotions</span>
                   </button>
                 </div>
               ) : (
-                <div className="divide-y divide-zinc-800/80 text-sm font-medium">
+                <div className="divide-y divide-slate-100 text-sm font-medium">
                   <button
                     type="button"
                     onClick={() => navigate(user ? 'dashboard' : 'login')}
-                    className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
+                    className="w-full flex items-center gap-3 py-3.5 px-2 text-slate-800 hover:bg-slate-50 rounded-lg"
                   >
-                    <UserIcon className="w-4 h-4 text-zinc-300" />
+                    <UserIcon className="w-4 h-4 text-slate-500" />
                     <span>Mon compte</span>
                   </button>
                   {user?.role !== 'admin' && (
                     <button
                       type="button"
                       onClick={() => navigate('recharge')}
-                      className="w-full flex items-center gap-3 py-3.5 px-2 text-[#f5b800] font-bold hover:bg-zinc-900"
+                      className="w-full flex items-center gap-3 py-3.5 px-2 text-[#059669] font-bold hover:bg-slate-50 rounded-lg"
                     >
                       <Wallet className="w-4 h-4" />
-                      <span>Recharger & Contacter Admin</span>
+                      <span>Recharger &amp; Contacter Admin</span>
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => navigate(user ? 'profile' : 'login')}
-                    className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
+                    className="w-full flex items-center gap-3 py-3.5 px-2 text-slate-800 hover:bg-slate-50 rounded-lg"
                   >
-                    <Lock className="w-4 h-4 text-zinc-300" />
-                    <span>Profil & Préférences</span>
+                    <Lock className="w-4 h-4 text-slate-500" />
+                    <span>Profil &amp; Préférences</span>
                   </button>
                   {user?.role !== 'admin' && (
                     <button
                       type="button"
                       onClick={() => navigate(user ? 'history' : 'login')}
-                      className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
+                      className="w-full flex items-center gap-3 py-3.5 px-2 text-slate-800 hover:bg-slate-50 rounded-lg"
                     >
-                      <History className="w-4 h-4 text-zinc-300" />
+                      <History className="w-4 h-4 text-slate-500" />
                       <span>Mes Paris</span>
                     </button>
                   )}
                   <button
                     type="button"
                     onClick={() => navigate('leaderboard')}
-                    className="w-full flex items-center gap-3 py-3.5 px-2 text-white hover:bg-zinc-900"
+                    className="w-full flex items-center gap-3 py-3.5 px-2 text-slate-800 hover:bg-slate-50 rounded-lg"
                   >
-                    <Award className="w-4 h-4 text-zinc-300" />
+                    <Award className="w-4 h-4 text-slate-500" />
                     <span>Classement</span>
                   </button>
                   {user?.role === 'admin' && (
                     <button
                       type="button"
                       onClick={() => navigate('admin')}
-                      className="w-full flex items-center gap-3 py-3.5 px-2 text-[#f5b800] font-bold hover:bg-zinc-900"
+                      className="w-full flex items-center gap-3 py-3.5 px-2 text-[#dc2626] font-bold hover:bg-slate-50 rounded-lg"
                     >
                       <Shield className="w-4 h-4" />
-                      <span>Admin Console</span>
+                      <span>Console Admin</span>
                     </button>
                   )}
                   {user && (
@@ -543,13 +573,13 @@ export default function App() {
                       onClick={async () => {
                         await logout();
                         setAccountDrawerOpen(false);
-                        showToast('Signed out.', 'info');
+                        showToast('Déconnecté.', 'info');
                         navigate('home');
                       }}
-                      className="w-full flex items-center gap-3 py-3.5 px-2 text-rose-400 hover:bg-zinc-900"
+                      className="w-full flex items-center gap-3 py-3.5 px-2 text-rose-600 hover:bg-rose-50 rounded-lg"
                     >
                       <LogOut className="w-4 h-4" />
-                      <span>Logout</span>
+                      <span>Déconnexion</span>
                     </button>
                   )}
                 </div>
@@ -559,29 +589,29 @@ export default function App() {
         </div>
       )}
 
-      {/* Responsive Workspace: 1 col mobile -> 2 col lg (wide!) -> 3 col xl */}
-      <div className="flex-1 max-w-[1640px] w-full mx-auto px-3 sm:px-5 lg:px-6 py-4 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[230px_minmax(0,1fr)_370px] gap-5 items-start">
+      {/* Responsive Workspace */}
+      <div className="flex-1 max-w-[1640px] w-full mx-auto px-3 sm:px-5 lg:px-6 py-5 grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_370px] xl:grid-cols-[235px_minmax(0,1fr)_380px] gap-5 items-start">
         {/* Left Sidebar (xl+) */}
-        <aside className="hidden xl:flex flex-col gap-3 sticky top-20">
-          <div className="rounded-xl border border-zinc-800/80 bg-[#1a1a1d] overflow-hidden">
-            <div className="px-3.5 py-2.5 border-b border-zinc-800 bg-[#141416] text-xs font-bold text-[#f5b800] uppercase tracking-wider">
+        <aside className="hidden xl:flex flex-col gap-3.5 sticky top-28">
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 text-xs font-extrabold text-slate-700 uppercase tracking-wider">
               Sports A-Z
             </div>
-            <div className="p-1.5 space-y-0.5">
+            <div className="p-2 space-y-0.5">
               <button
                 type="button"
                 onClick={() => navigate('live')}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                   route === 'live'
-                    ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-200 hover:bg-zinc-800/60 hover:text-white'
+                    ? 'bg-blue-50 text-[#0a58ca]'
+                    : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-[#e11d2e] shrink-0" />
-                  <span>Live & All Sports</span>
+                  <Radio className="w-4 h-4 text-[#dc2626] shrink-0" />
+                  <span>Direct &amp; Calendrier</span>
                 </span>
-                <span className="font-mono-tabular text-[#e11d2e] font-bold">{liveTotal}</span>
+                <span className="font-mono-tabular text-[#dc2626] font-bold">{liveTotal}</span>
               </button>
 
               {sports.map((sp) => {
@@ -592,104 +622,104 @@ export default function App() {
                     key={sp.id}
                     type="button"
                     onClick={() => navigate(target)}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                       active
-                        ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                        : 'text-zinc-200 hover:bg-zinc-800/60 hover:text-white'
+                        ? 'bg-blue-50 text-[#0a58ca]'
+                        : 'text-slate-700 hover:bg-slate-100'
                     }`}
                   >
                     <span className="flex items-center gap-2 truncate">
                       <SportIcon slug={sp.slug} />
                       <span className="truncate">{sp.name}</span>
                     </span>
-                    <span className="font-mono-tabular text-zinc-400">{sp.totalCount ?? 0}</span>
+                    <span className="font-mono-tabular text-slate-500">{sp.totalCount ?? 0}</span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800/80 bg-[#1a1a1d] overflow-hidden">
-            <div className="px-3.5 py-2.5 border-b border-zinc-800 bg-[#141416] text-xs font-bold text-zinc-300 uppercase tracking-wider">
-              Menu
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+            <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+              Menu Rapide
             </div>
-            <div className="p-1.5 space-y-0.5 text-xs font-medium">
+            <div className="p-2 space-y-0.5 text-xs font-semibold">
               {user?.role !== 'admin' && (
                 <button
                   type="button"
                   onClick={() => navigate('recharge')}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                     route === 'recharge'
-                      ? 'bg-[#f5b800] text-[#111111] font-bold'
-                      : 'text-[#f5b800] hover:bg-zinc-800/60'
+                      ? 'bg-[#059669] text-white font-bold'
+                      : 'text-[#059669] hover:bg-emerald-50'
                   }`}
                 >
                   <Wallet className="w-4 h-4" />
-                  <span>Recharger & Contacter</span>
+                  <span>Recharger &amp; Contacter</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => navigate('dashboard')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                   route === 'dashboard'
-                    ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-200 hover:bg-zinc-800/60'
+                    ? 'bg-blue-50 text-[#0a58ca]'
+                    : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <LayoutDashboard className="w-4 h-4 text-zinc-400" />
+                <LayoutDashboard className="w-4 h-4 text-slate-400" />
                 <span>Mon Compte</span>
               </button>
               {user?.role !== 'admin' && (
                 <button
                   type="button"
                   onClick={() => navigate('history')}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                     route === 'history'
-                      ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                      : 'text-zinc-200 hover:bg-zinc-800/60'
+                      ? 'bg-blue-50 text-[#0a58ca]'
+                      : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <History className="w-4 h-4 text-zinc-400" />
+                  <History className="w-4 h-4 text-slate-400" />
                   <span>Mes Paris</span>
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => navigate('leaderboard')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                   route === 'leaderboard'
-                    ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-200 hover:bg-zinc-800/60'
+                    ? 'bg-blue-50 text-[#0a58ca]'
+                    : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <Award className="w-4 h-4 text-zinc-400" />
+                <Award className="w-4 h-4 text-slate-400" />
                 <span>Classement</span>
               </button>
               <button
                 type="button"
                 onClick={() => navigate('promotions')}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                   route === 'promotions'
-                    ? 'bg-[#f5b800]/15 text-[#f5b800]'
-                    : 'text-zinc-200 hover:bg-zinc-800/60'
+                    ? 'bg-blue-50 text-[#0a58ca]'
+                    : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <Gift className="w-4 h-4 text-[#f5b800]" />
+                <Gift className="w-4 h-4 text-[#0a58ca]" />
                 <span>Bonus Sports</span>
               </button>
               {user?.role === 'admin' && (
                 <button
                   type="button"
                   onClick={() => navigate('admin')}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl transition-colors ${
                     route === 'admin'
-                      ? 'bg-[#f5b800] text-[#111111] font-bold'
-                      : 'text-[#f5b800] hover:bg-zinc-800/60'
+                      ? 'bg-[#dc2626] text-white font-bold'
+                      : 'text-[#dc2626] hover:bg-rose-50'
                   }`}
                 >
                   <Shield className="w-4 h-4" />
-                  <span>Admin Console</span>
+                  <span>Console Admin</span>
                 </button>
               )}
             </div>
@@ -750,13 +780,17 @@ export default function App() {
           )}
         </main>
 
-        {/* Right Gold Betslip / Admin Mode Notice (lg+) */}
-        <aside className="hidden lg:block sticky top-20 h-[calc(100vh-5.8rem)]">
-          <BettingSlip onNavigate={navigate} onBetPlaced={() => loadCatalogAndMatches()} />
+        {/* Right Real-Time Betslip (lg+) */}
+        <aside className="hidden lg:block sticky top-28 h-[calc(100vh-8rem)]">
+          <BettingSlip
+            matches={matches}
+            onNavigate={navigate}
+            onBetPlaced={() => loadCatalogAndMatches()}
+          />
         </aside>
       </div>
 
-      {/* Mobile Floating Betslip Pill (hidden for admin and auth routes) */}
+      {/* Mobile Floating Betslip Pill */}
       {user?.role !== 'admin' &&
         route !== 'login' &&
         route !== 'register' &&
@@ -765,7 +799,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="lg:hidden fixed bottom-18 right-4 z-40 flex items-center gap-2 rounded-full bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2.5 shadow-xl text-xs"
+            className="lg:hidden fixed bottom-18 right-4 z-40 flex items-center gap-2 rounded-full bg-[#0a58ca] hover:bg-[#0847a8] text-white font-bold px-4 py-2.5 shadow-lg text-xs"
           >
             {betBuilderGroupCount > 0 ? (
               <Layers className="w-4 h-4" />
@@ -784,22 +818,26 @@ export default function App() {
 
       {/* Mobile Betting Slip Drawer */}
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex justify-end bg-black/75 backdrop-blur-sm">
-          <div className="w-full max-w-sm h-full bg-[#111111] p-2.5 flex flex-col">
+        <div className="lg:hidden fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs">
+          <div className="w-full max-w-sm h-full bg-[#f4f7fb] p-2.5 flex flex-col">
             <div className="flex-1 min-h-0">
-              <BettingSlip onNavigate={navigate} onBetPlaced={() => loadCatalogAndMatches()} />
+              <BettingSlip
+                matches={matches}
+                onNavigate={navigate}
+                onBetPlaced={() => loadCatalogAndMatches()}
+              />
             </div>
           </div>
         </div>
       )}
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 h-14 border-t border-zinc-800 bg-[#141416]/95 backdrop-blur-md grid grid-cols-5 text-[11px] font-medium">
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 h-14 border-t border-slate-200 bg-white/95 backdrop-blur-md grid grid-cols-5 text-[11px] font-semibold">
         <button
           type="button"
           onClick={() => navigate('home')}
           className={`flex flex-col items-center justify-center gap-0.5 ${
-            route === 'home' ? 'text-[#f5b800]' : 'text-zinc-400'
+            route === 'home' ? 'text-[#0a58ca]' : 'text-slate-500'
           }`}
         >
           <Home className="w-4 h-4" />
@@ -809,7 +847,7 @@ export default function App() {
           type="button"
           onClick={() => navigate('live')}
           className={`flex flex-col items-center justify-center gap-0.5 ${
-            route === 'live' ? 'text-[#e11d2e]' : 'text-zinc-400'
+            route === 'live' ? 'text-[#dc2626]' : 'text-slate-500'
           }`}
         >
           <Radio className="w-4 h-4" />
@@ -820,7 +858,7 @@ export default function App() {
             type="button"
             onClick={() => navigate('admin')}
             className={`flex flex-col items-center justify-center gap-0.5 ${
-              route === 'admin' ? 'text-[#f5b800]' : 'text-zinc-400'
+              route === 'admin' ? 'text-[#dc2626]' : 'text-slate-500'
             }`}
           >
             <Shield className="w-4 h-4" />
@@ -831,7 +869,7 @@ export default function App() {
             type="button"
             onClick={() => navigate('recharge')}
             className={`flex flex-col items-center justify-center gap-0.5 ${
-              route === 'recharge' ? 'text-[#f5b800]' : 'text-zinc-400'
+              route === 'recharge' ? 'text-[#059669]' : 'text-slate-500'
             }`}
           >
             <Wallet className="w-4 h-4" />
@@ -842,7 +880,7 @@ export default function App() {
           type="button"
           onClick={() => navigate(user?.role === 'admin' ? 'admin' : 'history')}
           className={`flex flex-col items-center justify-center gap-0.5 ${
-            route === 'history' ? 'text-[#f5b800]' : 'text-zinc-400'
+            route === 'history' ? 'text-[#0a58ca]' : 'text-slate-500'
           }`}
         >
           <History className="w-4 h-4" />
@@ -859,7 +897,7 @@ export default function App() {
             }
           }}
           className={`flex flex-col items-center justify-center gap-0.5 ${
-            route === 'dashboard' || route === 'login' ? 'text-[#f5b800]' : 'text-zinc-400'
+            route === 'dashboard' || route === 'login' ? 'text-[#0a58ca]' : 'text-slate-500'
           }`}
         >
           <UserIcon className="w-4 h-4" />

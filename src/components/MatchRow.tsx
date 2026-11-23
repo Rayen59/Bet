@@ -24,111 +24,111 @@ export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
   const matchPicks = getMatchSelections(match.id);
   const secondaryCount = Math.max(0, match.markets.length - primaryMarkets.length);
   const startDt = new Date(match.startTime);
-  const formattedDate = startDt.toLocaleDateString(undefined, {
+  const formattedDate = startDt.toLocaleDateString('fr-FR', {
     day: '2-digit',
     month: '2-digit',
   });
-  const formattedTime = startDt.toLocaleTimeString(undefined, {
+  const formattedTime = startDt.toLocaleTimeString('fr-FR', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
   });
 
   const isFinished = match.status === 'finished';
+  const isLive = match.status === 'live';
 
   return (
-    <div className="group border-b border-zinc-800/80 last:border-b-0 bg-[#18191d] hover:bg-[#1f2127] px-4 py-3.5 transition-colors">
+    <div className="group rounded-xl border border-slate-200 bg-white hover:border-[#0a58ca]/40 hover:shadow-sm p-4 sm:p-5 transition-all">
       {/* Top Meta Line */}
-      <div className="flex items-center justify-between gap-2 mb-2.5 text-xs text-zinc-400">
+      <div className="flex items-center justify-between gap-2 mb-3.5 text-xs">
         <div className="flex items-center gap-2 min-w-0 truncate">
-          <button
-            type="button"
-            onClick={() => onSelectMatch(match.id)}
-            className="rounded bg-[#f5b800] hover:bg-[#fbbf24] px-1.5 py-0.5 text-[10px] font-extrabold text-[#111111] leading-none shrink-0"
-            title="Ouvrir Bet Builder"
-          >
-            {matchPicks.length > 1 ? `BB (${matchPicks.length})` : 'BB'}
-          </button>
-
-          {match.status === 'live' ? (
+          {isLive ? (
             <>
-              <span className="inline-flex items-center rounded bg-[#e11d2e] px-1.5 py-0.5 text-[10px] font-extrabold tracking-wide text-white uppercase shrink-0">
+              <span className="inline-flex items-center rounded bg-[#dc2626] px-2 py-0.5 text-[10px] font-extrabold tracking-wide text-white uppercase shrink-0">
                 LIVE
               </span>
-              <span className="font-mono-tabular font-bold text-white whitespace-nowrap shrink-0">
+              <span className="font-mono-tabular font-bold text-[#dc2626] whitespace-nowrap shrink-0">
                 {match.matchTimer}
               </span>
             </>
           ) : (
-            <span className="font-mono-tabular text-zinc-200 font-semibold whitespace-nowrap shrink-0">
-              {formattedTime} {formattedDate}
+            <span className="font-mono-tabular text-slate-600 font-semibold whitespace-nowrap shrink-0">
+              {formattedDate} • {formattedTime}
             </span>
           )}
 
-          <span className="text-zinc-500">•</span>
-          <span className="text-zinc-300 font-medium truncate">
+          <span className="text-slate-300">·</span>
+          <span className="text-slate-600 font-medium truncate">
             {match.competitionCountry ? `${match.competitionCountry} · ` : ''}
             {match.competitionName}
           </span>
+
           {isFinished && (
             <>
-              <span className="text-zinc-500">•</span>
-              <span className="text-zinc-400 font-bold uppercase">FT</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-slate-500 font-bold uppercase">Terminé</span>
             </>
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => onSelectMatch(match.id)}
-          className="inline-flex items-center gap-0.5 text-xs font-semibold text-zinc-300 hover:text-[#f5b800] transition-colors whitespace-nowrap shrink-0"
-        >
-          <span>{secondaryCount > 0 ? `+${secondaryCount}` : 'Stats'}</span>
-          <ChevronRight className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => onSelectMatch(match.id)}
+            className={`rounded-md px-2 py-1 text-[11px] font-bold transition-colors leading-none ${
+              matchPicks.length > 0
+                ? 'bg-[#0a58ca] text-white'
+                : 'bg-blue-50 text-[#0a58ca] border border-blue-200 hover:bg-blue-100'
+            }`}
+            title="Ouvrir Bet Builder"
+          >
+            {matchPicks.length > 1 ? `Bet Builder (${matchPicks.length})` : 'Bet Builder'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelectMatch(match.id)}
+            className="inline-flex items-center gap-0.5 text-xs font-semibold text-slate-500 hover:text-[#0a58ca] transition-colors whitespace-nowrap"
+          >
+            <span>{secondaryCount > 0 ? `+${secondaryCount} marchés` : 'Détails'}</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
-      {/* Matchup + Score + Crisp Light Odds Boxes */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+      {/* Matchup + Score + Spacious Light Odds Boxes */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <button
           type="button"
           onClick={() => onSelectMatch(match.id)}
-          className="flex-1 min-w-0 text-left flex items-center justify-between gap-3 rounded py-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5b800]"
+          className="flex-1 min-w-0 text-left flex items-center justify-between gap-4 rounded-lg py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0a58ca]"
         >
-          <div className="flex flex-col gap-2 min-w-0 flex-1">
-            <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex flex-col gap-3 min-w-0 flex-1">
+            <div className="flex items-center gap-3 min-w-0">
               <TeamBadge shortName={match.homeTeam.shortName} color={match.homeTeam.logo} size="sm" />
-              <span className="font-heading text-[14px] font-semibold text-white truncate">
+              <span className="font-heading text-[15px] sm:text-base font-bold text-slate-900 truncate group-hover:text-[#0a58ca] transition-colors">
                 {match.homeTeam.name}
               </span>
             </div>
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-3 min-w-0">
               <TeamBadge shortName={match.awayTeam.shortName} color={match.awayTeam.logo} size="sm" />
-              <span className="font-heading text-[14px] font-semibold text-white truncate">
+              <span className="font-heading text-[15px] sm:text-base font-bold text-slate-900 truncate group-hover:text-[#0a58ca] transition-colors">
                 {match.awayTeam.name}
               </span>
             </div>
           </div>
 
-          <div className="flex flex-col items-end justify-center gap-2 shrink-0 pr-1.5">
+          <div className="flex flex-col items-end justify-center gap-3 shrink-0 pr-2">
             <span
-              className={`font-mono-tabular text-sm font-extrabold min-w-[1.5rem] text-right ${
-                match.status === 'live'
-                  ? 'text-[#f5b800]'
-                  : isFinished
-                  ? 'text-zinc-200'
-                  : 'text-zinc-500'
+              className={`font-mono-tabular text-base sm:text-lg font-extrabold min-w-[1.75rem] text-right leading-8 ${
+                isLive ? 'text-[#0a58ca]' : isFinished ? 'text-slate-900' : 'text-slate-400'
               }`}
             >
               {match.status === 'upcoming' ? '–' : match.homeScore}
             </span>
             <span
-              className={`font-mono-tabular text-sm font-extrabold min-w-[1.5rem] text-right ${
-                match.status === 'live'
-                  ? 'text-[#f5b800]'
-                  : isFinished
-                  ? 'text-zinc-200'
-                  : 'text-zinc-500'
+              className={`font-mono-tabular text-base sm:text-lg font-extrabold min-w-[1.75rem] text-right leading-8 ${
+                isLive ? 'text-[#0a58ca]' : isFinished ? 'text-slate-900' : 'text-slate-400'
               }`}
             >
               {match.status === 'upcoming' ? '–' : match.awayScore}
@@ -136,10 +136,10 @@ export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
           </div>
         </button>
 
-        {/* Crisp Light Odds Buttons -> Solid Gold Active */}
+        {/* Clear, Spacious Odds Buttons */}
         <div
-          className={`grid gap-2 shrink-0 ${
-            primaryMarkets.length === 3 ? 'grid-cols-3 md:w-[285px]' : 'grid-cols-2 md:w-[215px]'
+          className={`grid gap-2.5 shrink-0 ${
+            primaryMarkets.length === 3 ? 'grid-cols-3 md:w-[320px]' : 'grid-cols-2 md:w-[235px]'
           }`}
         >
           {primaryMarkets.map((mkt) => {
@@ -168,18 +168,22 @@ export function MatchRow({ match, onSelectMatch }: MatchRowProps) {
                     }
                   )
                 }
-                className={`flex items-center justify-between gap-1 rounded-lg px-3 py-2.5 text-xs transition-colors min-h-[44px] ${
+                className={`flex flex-col items-center justify-center rounded-xl px-3 py-2.5 transition-all min-h-[54px] border ${
                   isFinished
-                    ? 'bg-zinc-900 border border-zinc-800 text-zinc-600 cursor-not-allowed'
+                    ? 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
                     : active
-                    ? 'bg-[#f5b800] text-[#111111] font-bold'
-                    : 'bg-[#ececef] hover:bg-white text-[#111111] font-medium'
+                    ? 'bg-[#0a58ca] border-[#0a58ca] text-white font-bold shadow-xs'
+                    : 'bg-slate-100/90 hover:bg-blue-50 border-slate-200 hover:border-[#0a58ca]/40 text-slate-900'
                 }`}
               >
-                <span className={`truncate text-xs ${active ? 'text-[#111111]/85 font-bold' : 'text-zinc-500'}`}>
+                <span
+                  className={`text-[11px] font-semibold truncate max-w-full ${
+                    active ? 'text-blue-100' : 'text-slate-500'
+                  }`}
+                >
                   {mkt.selectionName}
                 </span>
-                <span className="font-mono-tabular text-[13px] font-bold shrink-0">
+                <span className="font-mono-tabular text-sm font-extrabold mt-0.5">
                   {mkt.simulatedOdds.toFixed(2)}
                 </span>
               </button>

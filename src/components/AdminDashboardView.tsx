@@ -106,7 +106,6 @@ export function AdminDashboardView({
     'deposits' | 'messages' | 'users' | 'matches' | 'odds' | 'catalog' | 'activity'
   >('deposits');
 
-  // User Search & Inspector
   const [userSearch, setUserSearch] = useState('');
   const [inspectedUser, setInspectedUser] = useState<InspectedUserPayload | null>(null);
   const [inspectLoading, setInspectLoading] = useState(false);
@@ -114,7 +113,6 @@ export function AdminDashboardView({
   const [creditNote, setCreditNote] = useState<string>('Admin Credit Deposit');
   const [crediting, setCrediting] = useState(false);
 
-  // Create match form
   const [sportId, setSportId] = useState<number>(1);
   const [competitionId, setCompetitionId] = useState<number>(1);
   const [homeTeamName, setHomeTeamName] = useState('');
@@ -122,7 +120,6 @@ export function AdminDashboardView({
   const [newStatus, setNewStatus] = useState<'upcoming' | 'live'>('upcoming');
   const [newTimer, setNewTimer] = useState('20:00');
 
-  // Create sport / competition forms
   const [newSportName, setNewSportName] = useState('');
   const [newCompName, setNewCompName] = useState('');
   const [newCompCountry, setNewCompCountry] = useState('');
@@ -155,7 +152,7 @@ export function AdminDashboardView({
       }
     } catch (err: any) {
       if (!silent) {
-        showToast(err?.message || 'Failed to load admin overview.', 'error');
+        showToast(err?.message || 'Impossible de charger la console admin.', 'error');
       }
     } finally {
       if (!silent) setLoading(false);
@@ -168,7 +165,6 @@ export function AdminDashboardView({
     }
   }, [user, loadOverview]);
 
-  // Real-time SSE listener + 5s silent polling for new deposits, D17 screenshots & chat messages
   useEffect(() => {
     if (user?.role !== 'admin') return;
 
@@ -271,18 +267,20 @@ export function AdminDashboardView({
 
   if (!user || user.role !== 'admin') {
     return (
-      <div className="rounded-xl border border-rose-500/30 bg-[#18181b] p-10 text-center space-y-3">
-        <ShieldAlert className="w-8 h-8 text-rose-400 mx-auto" />
-        <h1 className="font-display text-xl font-bold text-white">Restricted Admin Area</h1>
-        <p className="text-sm text-zinc-400">
-          Administrator credentials are required to manage users, balances, matches, and odds.
+      <div className="rounded-2xl border border-rose-200 bg-white p-10 text-center space-y-3 shadow-xs">
+        <ShieldAlert className="w-8 h-8 text-rose-600 mx-auto" />
+        <h1 className="font-heading text-xl font-extrabold text-slate-900">
+          Accès Administrateur Restreint
+        </h1>
+        <p className="text-sm text-slate-600">
+          Des identifiants administrateur sont requis pour gérer les utilisateurs, soldes, matchs et cotes.
         </p>
         <button
           type="button"
           onClick={() => onNavigate('login')}
-          className="px-4 py-2 rounded-lg bg-[#f5b800] text-[#111111] font-bold text-sm"
+          className="px-5 py-2.5 rounded-xl bg-[#0a58ca] text-white font-bold text-sm"
         >
-          Sign In as Admin
+          Connexion Admin
         </button>
       </div>
     );
@@ -294,7 +292,7 @@ export function AdminDashboardView({
       const data = await apiFetch<InspectedUserPayload>(`/api/admin/users/${targetUserId}`);
       setInspectedUser(data);
     } catch (err: any) {
-      showToast(err?.message || 'Failed to load user details.', 'error');
+      showToast(err?.message || 'Impossible de charger les détails du joueur.', 'error');
     } finally {
       setInspectLoading(false);
     }
@@ -303,7 +301,7 @@ export function AdminDashboardView({
   const handleCreditUser = async (targetUserId: number, amountOverride?: number) => {
     const amt = amountOverride ?? Number(creditAmount);
     if (!Number.isFinite(amt) || amt <= 0) {
-      showToast('Enter a positive DT amount to credit.', 'error');
+      showToast('Entrez un montant DT positif.', 'error');
       return;
     }
     setCrediting(true);
@@ -312,10 +310,10 @@ export function AdminDashboardView({
         method: 'POST',
         body: JSON.stringify({ amount: amt, note: creditNote }),
       });
-      showToast(`Credited +${amt.toFixed(2)} DT to user account.`, 'success');
+      showToast(`+${amt.toFixed(2)} DT crédités sur le compte du joueur.`, 'success');
       await Promise.all([loadOverview(true), handleInspectUser(targetUserId), refreshProfile()]);
     } catch (err: any) {
-      showToast(err?.message || 'Failed to credit account.', 'error');
+      showToast(err?.message || 'Échec du crédit.', 'error');
     } finally {
       setCrediting(false);
     }
@@ -387,9 +385,9 @@ export function AdminDashboardView({
         body: JSON.stringify({ role: currentRole === 'admin' ? 'user' : 'admin' }),
       });
       await Promise.all([loadOverview(), handleInspectUser(targetUserId)]);
-      showToast('User role updated.', 'success');
+      showToast('Rôle mis à jour.', 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Failed to update role.', 'error');
+      showToast(err?.message || 'Impossible de modifier le rôle.', 'error');
     }
   };
 
@@ -410,9 +408,9 @@ export function AdminDashboardView({
       setHomeTeamName('');
       setAwayTeamName('');
       await Promise.all([onRefreshMatches(), loadOverview()]);
-      showToast('Match created.', 'success');
+      showToast('Match créé.', 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Failed to create match.', 'error');
+      showToast(err?.message || 'Échec de la création du match.', 'error');
     }
   };
 
@@ -426,11 +424,11 @@ export function AdminDashboardView({
       });
       await Promise.all([onRefreshMatches(), loadOverview()]);
       showToast(
-        edit.status === 'finished' ? 'Match finished and winnings settled.' : 'Match updated.',
+        edit.status === 'finished' ? 'Match terminé et gains réglés.' : 'Match mis à jour.',
         'success'
       );
     } catch (err: any) {
-      showToast(err?.message || 'Failed to update match.', 'error');
+      showToast(err?.message || 'Échec de la mise à jour.', 'error');
     }
   };
 
@@ -438,9 +436,9 @@ export function AdminDashboardView({
     try {
       await apiFetch(`/api/admin/matches/${matchId}`, { method: 'DELETE' });
       await Promise.all([onRefreshMatches(), loadOverview()]);
-      showToast('Match removed.', 'info');
+      showToast('Match supprimé.', 'info');
     } catch (err: any) {
-      showToast(err?.message || 'Failed to delete match.', 'error');
+      showToast(err?.message || 'Échec de la suppression.', 'error');
     }
   };
 
@@ -451,9 +449,9 @@ export function AdminDashboardView({
         body: JSON.stringify({ simulatedOdds: marketEdits[marketId] }),
       });
       await Promise.all([onRefreshMatches(), loadOverview()]);
-      showToast('Market odds updated.', 'success');
+      showToast('Cote mise à jour.', 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Failed to update market.', 'error');
+      showToast(err?.message || 'Échec de la mise à jour de la cote.', 'error');
     }
   };
 
@@ -466,9 +464,9 @@ export function AdminDashboardView({
       });
       setNewSportName('');
       await loadOverview();
-      showToast('Sport added.', 'success');
+      showToast('Sport ajouté.', 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Failed to add sport.', 'error');
+      showToast(err?.message || 'Échec de l’ajout du sport.', 'error');
     }
   };
 
@@ -486,9 +484,9 @@ export function AdminDashboardView({
       setNewCompName('');
       setNewCompCountry('');
       await loadOverview();
-      showToast('Competition created.', 'success');
+      showToast('Compétition créée.', 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Failed to create competition.', 'error');
+      showToast(err?.message || 'Échec de la création.', 'error');
     }
   };
 
@@ -499,7 +497,6 @@ export function AdminDashboardView({
     depositFilter === 'all' ? true : d.status === depositFilter
   );
 
-  // Build unique user conversations ordered by latest message
   const conversations = (() => {
     const map = new Map<
       number,
@@ -544,17 +541,17 @@ export function AdminDashboardView({
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-4">
+      {/* Header Card */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-wrap items-center justify-between gap-4 shadow-xs">
         <div>
-          <h1 className="font-display text-2xl font-bold text-[#f5b800]">
+          <h1 className="font-heading text-xl sm:text-2xl font-extrabold text-slate-900">
             Console Admin · Gestion Temps Réel
           </h1>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            {user.email} · Les paris sont désactivés pour l’Admin — validez les recharges (Tickets / D17) et répondez aux joueurs.
+          <p className="text-xs text-slate-500 mt-1">
+            {user.email} · Validez les recharges (Tickets / D17), gérez les cotes et répondez aux joueurs en direct.
           </p>
         </div>
-        <div className="rounded-lg border border-[#f5b800]/35 bg-[#1b1912] px-3.5 py-2 text-xs font-semibold text-[#f5b800]">
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-bold text-[#0a58ca]">
           {pendingDepositsCount} recharge(s) en attente
         </div>
       </div>
@@ -562,33 +559,33 @@ export function AdminDashboardView({
       {/* KPI Strip */}
       {overview && (
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-4">
-            <span className="text-xs text-zinc-400">Joueurs</span>
-            <p className="font-mono-tabular text-xl font-bold text-white mt-1">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <span className="text-xs text-slate-500 font-medium">Joueurs</span>
+            <p className="font-mono-tabular text-xl font-extrabold text-slate-900 mt-1">
               {overview.stats.totalUsers}
             </p>
           </div>
-          <div className="rounded-xl border border-amber-500/35 bg-[#18191d] p-4">
-            <span className="text-xs text-amber-300">Recharges en attente</span>
-            <p className="font-mono-tabular text-xl font-bold text-[#f5b800] mt-1">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-2xs">
+            <span className="text-xs text-amber-800 font-medium">Recharges en attente</span>
+            <p className="font-mono-tabular text-xl font-extrabold text-amber-700 mt-1">
               {pendingDepositsCount}
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-4">
-            <span className="text-xs text-zinc-400">Messages reçus</span>
-            <p className="font-mono-tabular text-xl font-bold text-white mt-1">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <span className="text-xs text-slate-500 font-medium">Conversations</span>
+            <p className="font-mono-tabular text-xl font-extrabold text-slate-900 mt-1">
               {conversations.length}
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-4">
-            <span className="text-xs text-zinc-400">Total Paris</span>
-            <p className="font-mono-tabular text-xl font-bold text-[#f5b800] mt-1">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <span className="text-xs text-slate-500 font-medium">Total Paris</span>
+            <p className="font-mono-tabular text-xl font-extrabold text-[#0a58ca] mt-1">
               {overview.stats.totalVirtualBets}
             </p>
           </div>
-          <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-4 col-span-2 lg:col-span-1">
-            <span className="text-xs text-zinc-400">Volume Misé</span>
-            <p className="font-mono-tabular text-xl font-bold text-emerald-400 mt-1">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 col-span-2 lg:col-span-1 shadow-2xs">
+            <span className="text-xs text-slate-500 font-medium">Volume Misé</span>
+            <p className="font-mono-tabular text-xl font-extrabold text-emerald-600 mt-1">
               {overview.stats.totalVirtualVolume.toFixed(2)} DT
             </p>
           </div>
@@ -596,19 +593,11 @@ export function AdminDashboardView({
       )}
 
       {/* Navigation Tabs */}
-      <div className="flex flex-wrap items-center gap-1 p-1 bg-[#18191d] border border-zinc-800 rounded-lg w-fit">
+      <div className="flex flex-wrap items-center gap-1.5 p-1.5 bg-white border border-slate-200 rounded-2xl w-fit shadow-xs">
         {(
           [
-            {
-              id: 'deposits',
-              label: 'Recharges (Tickets & D17)',
-              badge: pendingDepositsCount,
-            },
-            {
-              id: 'messages',
-              label: 'Messages Joueurs',
-              badge: conversations.length,
-            },
+            { id: 'deposits', label: 'Recharges (Tickets & D17)', badge: pendingDepositsCount },
+            { id: 'messages', label: 'Messages Joueurs', badge: conversations.length },
             { id: 'users', label: 'Joueurs & Soldes', badge: 0 },
             { id: 'matches', label: 'Matchs & Scores', badge: 0 },
             { id: 'odds', label: 'Cotes', badge: 0 },
@@ -620,17 +609,21 @@ export function AdminDashboardView({
             key={t.id}
             type="button"
             onClick={() => setActiveTab(t.id)}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 ${
               activeTab === t.id
-                ? 'bg-[#f5b800] text-[#111111]'
-                : 'text-zinc-400 hover:text-white'
+                ? 'bg-[#0a58ca] text-white'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
             }`}
           >
             <span>{t.label}</span>
             {t.badge > 0 && (
               <span
                 className={`rounded px-1.5 py-0.5 text-[10px] font-mono-tabular font-bold ${
-                  t.id === 'deposits' ? 'bg-[#dc2626] text-white' : 'bg-zinc-800 text-zinc-200'
+                  t.id === 'deposits'
+                    ? 'bg-[#dc2626] text-white'
+                    : activeTab === t.id
+                    ? 'bg-white text-[#0a58ca]'
+                    : 'bg-slate-100 text-slate-700'
                 }`}
               >
                 {t.badge}
@@ -641,14 +634,14 @@ export function AdminDashboardView({
       </div>
 
       {loading && !overview ? (
-        <div className="h-64 rounded-xl bg-zinc-900 border border-zinc-800 animate-pulse" />
+        <div className="h-64 rounded-2xl bg-white border border-slate-200 animate-pulse" />
       ) : (
         <>
-          {/* Tab 0: Real-Time Deposits Queue (Tickets + D17 with Screenshots) */}
+          {/* Tab 0: Real-Time Deposits Queue */}
           {activeTab === 'deposits' && (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-1.5 p-1 rounded-lg bg-[#18191d] border border-zinc-800">
+                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-white border border-slate-200 shadow-2xs">
                   {(
                     [
                       { id: 'all', label: `Toutes (${deposits.length})` },
@@ -667,10 +660,10 @@ export function AdminDashboardView({
                       key={f.id}
                       type="button"
                       onClick={() => setDepositFilter(f.id)}
-                      className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
                         depositFilter === f.id
-                          ? 'bg-[#f5b800] text-[#111111]'
-                          : 'text-zinc-400 hover:text-white'
+                          ? 'bg-[#0a58ca] text-white'
+                          : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       {f.label}
@@ -680,12 +673,12 @@ export function AdminDashboardView({
               </div>
 
               {filteredDeposits.length === 0 ? (
-                <div className="rounded-xl border border-zinc-800 bg-[#18191d] p-10 text-center space-y-2">
-                  <ArrowDownCircle className="w-8 h-8 text-zinc-600 mx-auto" />
-                  <p className="text-sm font-semibold text-zinc-300">
+                <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center space-y-2 shadow-xs">
+                  <ArrowDownCircle className="w-8 h-8 text-slate-300 mx-auto" />
+                  <p className="text-sm font-bold text-slate-700">
                     Aucune demande de recharge dans cette catégorie
                   </p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-slate-500">
                     Dès qu’un joueur envoie des tickets Ooredoo/Orange/Telecom ou une capture D17, elle apparaît ici en temps réel.
                   </p>
                 </div>
@@ -698,8 +691,8 @@ export function AdminDashboardView({
                     return (
                       <div
                         key={dep.id}
-                        className={`rounded-xl border bg-[#18191d] p-4 space-y-3 ${
-                          isPending ? 'border-[#f5b800]/50' : 'border-zinc-800'
+                        className={`rounded-2xl border bg-white p-4 sm:p-5 space-y-3 shadow-xs ${
+                          isPending ? 'border-blue-300' : 'border-slate-200'
                         }`}
                       >
                         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
@@ -707,29 +700,29 @@ export function AdminDashboardView({
                             <OperatorBadge operator={dep.operator} size="md" />
                             <div className="min-w-0 space-y-1">
                               <div className="flex flex-wrap items-center gap-2 text-xs">
-                                <span className="font-bold text-white text-sm">
+                                <span className="font-bold text-slate-900 text-sm">
                                   {dep.username || `User #${dep.userId}`}
                                 </span>
-                                {dep.email && <span className="text-zinc-400">({dep.email})</span>}
-                                <span className="font-mono-tabular font-extrabold text-[#f5b800] text-sm">
+                                {dep.email && <span className="text-slate-500">({dep.email})</span>}
+                                <span className="font-mono-tabular font-extrabold text-[#0a58ca] text-sm">
                                   +{dep.amount.toFixed(2)} DT
                                 </span>
                               </div>
-                              <p className="text-[11px] font-mono-tabular text-zinc-500">
+                              <p className="text-[11px] font-mono-tabular text-slate-500">
                                 Demande #{dep.id} · {dep.operator} ({dep.method}) ·{' '}
                                 {new Date(dep.createdAt).toLocaleString()}
                               </p>
 
                               {dep.method === 'tickets' && dep.ticketCodes.length > 0 && (
                                 <div className="pt-1 space-y-1">
-                                  <p className="text-[11px] font-semibold text-zinc-300">
+                                  <p className="text-[11px] font-semibold text-slate-600">
                                     Codes Tickets ({dep.ticketCodes.length} × 2.00 DT) :
                                   </p>
                                   <div className="flex flex-wrap gap-1.5">
                                     {dep.ticketCodes.map((code, i) => (
                                       <span
                                         key={i}
-                                        className="rounded-md border border-zinc-700 bg-[#111215] px-2.5 py-1 font-mono-tabular text-xs font-bold text-white select-all"
+                                        className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono-tabular text-xs font-bold text-slate-900 select-all"
                                       >
                                         {code}
                                       </span>
@@ -740,9 +733,9 @@ export function AdminDashboardView({
 
                               {dep.method === 'D17' && (
                                 <div className="pt-1 space-y-1.5 text-xs">
-                                  <p className="text-zinc-300 font-mono-tabular">
+                                  <p className="text-slate-600 font-mono-tabular">
                                     Numéro D17 du joueur :{' '}
-                                    <strong className="text-[#f5b800] select-all">
+                                    <strong className="text-[#0a58ca] select-all">
                                       {dep.phoneNumber || 'Non fourni'}
                                     </strong>
                                   </p>
@@ -750,18 +743,17 @@ export function AdminDashboardView({
                               )}
 
                               {dep.note && (
-                                <p className="text-xs text-zinc-400">Note joueur : {dep.note}</p>
+                                <p className="text-xs text-slate-500">Note joueur : {dep.note}</p>
                               )}
                             </div>
                           </div>
 
-                          {/* D17 Screenshot Thumbnail Preview */}
                           {dep.screenshotData && (
                             <div className="flex items-center gap-2 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => setPreviewScreenshot(dep.screenshotData!)}
-                                className="group relative rounded-xl overflow-hidden border border-zinc-700 hover:border-[#f5b800] w-24 h-24 shrink-0 bg-black"
+                                className="group relative rounded-xl overflow-hidden border border-slate-200 hover:border-[#0a58ca] w-24 h-24 shrink-0 bg-slate-100"
                                 title="Agrandir la capture d'écran D17"
                               >
                                 <img
@@ -769,7 +761,7 @@ export function AdminDashboardView({
                                   alt="Capture D17"
                                   className="w-full h-full object-cover"
                                 />
-                                <span className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-white transition-opacity">
+                                <span className="absolute inset-0 bg-slate-900/45 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1 text-[10px] font-bold text-white transition-opacity">
                                   <ZoomIn className="w-4 h-4" />
                                   <span>Agrandir</span>
                                 </span>
@@ -779,7 +771,7 @@ export function AdminDashboardView({
                         </div>
 
                         {isPending ? (
-                          <div className="pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                             <input
                               type="text"
                               value={depositNotes[dep.id] || ''}
@@ -787,14 +779,14 @@ export function AdminDashboardView({
                                 setDepositNotes((prev) => ({ ...prev, [dep.id]: e.target.value }))
                               }
                               placeholder="Note optionnelle (ex: Code vérifié, Reçu D17 invalide...)"
-                              className="flex-1 rounded-lg border border-zinc-700 bg-[#111215] px-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
+                              className="flex-1 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-[#0a58ca] focus:bg-white focus:outline-none"
                             />
                             <div className="flex items-center gap-2 shrink-0">
                               <button
                                 type="button"
                                 disabled={busy}
                                 onClick={() => handleApproveDeposit(dep.id, dep.userId)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-[#09100b] font-bold px-4 py-2 text-xs"
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-[#059669] hover:bg-[#047857] disabled:opacity-50 text-white font-bold px-4 py-2 text-xs"
                               >
                                 <Check className="w-4 h-4" />
                                 <span>{busy ? '...' : `Accepter (+${dep.amount.toFixed(2)} DT)`}</span>
@@ -803,7 +795,7 @@ export function AdminDashboardView({
                                 type="button"
                                 disabled={busy}
                                 onClick={() => handleRejectDeposit(dep.id)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-50 text-rose-300 font-semibold px-4 py-2 text-xs"
+                                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-700 font-semibold px-4 py-2 text-xs"
                               >
                                 <X className="w-4 h-4" />
                                 <span>Refuser</span>
@@ -811,15 +803,15 @@ export function AdminDashboardView({
                             </div>
                           </div>
                         ) : (
-                          <div className="pt-2 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-                            <span className="text-zinc-400">
+                          <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className="text-slate-500">
                               {dep.adminNote ? `Note : ${dep.adminNote}` : ''}
                             </span>
                             <span
-                              className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-bold uppercase ${
+                              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-bold uppercase ${
                                 isApproved
-                                  ? 'bg-emerald-500/20 text-emerald-400'
-                                  : 'bg-rose-500/20 text-rose-400'
+                                  ? 'bg-emerald-100 text-emerald-700'
+                                  : 'bg-rose-100 text-rose-700'
                               }`}
                             >
                               {isApproved ? (
@@ -847,17 +839,17 @@ export function AdminDashboardView({
           {/* Tab: Real-Time User Contact Messages */}
           {activeTab === 'messages' && (
             <div className="grid lg:grid-cols-[280px_1fr] gap-4 items-start">
-              <div className="rounded-xl border border-zinc-800 bg-[#18191d] overflow-hidden">
-                <div className="px-4 py-3 border-b border-zinc-800 bg-[#121316] flex items-center gap-2 text-xs font-bold text-white uppercase">
-                  <MessageCircle className="w-4 h-4 text-[#f5b800]" />
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2 text-xs font-extrabold text-slate-800 uppercase">
+                  <MessageCircle className="w-4 h-4 text-[#0a58ca]" />
                   <span>Conversations ({conversations.length})</span>
                 </div>
                 {conversations.length === 0 ? (
-                  <p className="p-6 text-center text-xs text-zinc-500">
+                  <p className="p-6 text-center text-xs text-slate-500">
                     Aucun message reçu pour le moment.
                   </p>
                 ) : (
-                  <div className="divide-y divide-zinc-800/80 max-h-[480px] overflow-y-auto">
+                  <div className="divide-y divide-slate-100 max-h-[480px] overflow-y-auto">
                     {conversations.map((conv) => {
                       const active = activeConversation?.userId === conv.userId;
                       return (
@@ -866,16 +858,16 @@ export function AdminDashboardView({
                           type="button"
                           onClick={() => setSelectedChatUserId(conv.userId)}
                           className={`w-full text-left p-3.5 space-y-1 transition-colors ${
-                            active ? 'bg-[#f5b800]/15' : 'hover:bg-zinc-900/60'
+                            active ? 'bg-blue-50' : 'hover:bg-slate-50'
                           }`}
                         >
                           <div className="flex items-center justify-between gap-2 text-xs">
-                            <span className="font-bold text-white truncate">{conv.userName}</span>
-                            <span className="font-mono-tabular text-[#f5b800] font-bold shrink-0">
+                            <span className="font-bold text-slate-900 truncate">{conv.userName}</span>
+                            <span className="font-mono-tabular text-[#0a58ca] font-bold shrink-0">
                               {conv.userBalance.toFixed(2)} DT
                             </span>
                           </div>
-                          <p className="text-[11px] text-zinc-400 truncate">{conv.lastMessage}</p>
+                          <p className="text-[11px] text-slate-500 truncate">{conv.lastMessage}</p>
                         </button>
                       );
                     })}
@@ -883,23 +875,23 @@ export function AdminDashboardView({
                 )}
               </div>
 
-              <div className="rounded-xl border border-zinc-800 bg-[#18191d] overflow-hidden flex flex-col min-h-[460px]">
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex flex-col min-h-[460px] shadow-xs">
                 {!activeConversation ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-2">
-                    <Clock className="w-8 h-8 text-zinc-600" />
-                    <p className="text-sm font-semibold text-zinc-300">
+                    <Clock className="w-8 h-8 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-700">
                       En attente de messages des joueurs
                     </p>
-                    <p className="text-xs text-zinc-500 max-w-sm">
+                    <p className="text-xs text-slate-500 max-w-sm">
                       Les joueurs peuvent vous contacter depuis la page Recharger pour envoyer leur argent ou demander assistance en temps réel.
                     </p>
                   </div>
                 ) : (
                   <>
-                    <div className="px-4 py-3 border-b border-zinc-800 bg-[#121316] flex flex-wrap items-center justify-between gap-2">
+                    <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/70 flex flex-wrap items-center justify-between gap-2">
                       <div className="text-xs">
-                        <p className="font-bold text-white text-sm">{activeConversation.userName}</p>
-                        <p className="text-zinc-400">{activeConversation.userEmail}</p>
+                        <p className="font-bold text-slate-900 text-sm">{activeConversation.userName}</p>
+                        <p className="text-slate-500">{activeConversation.userEmail}</p>
                       </div>
                       <button
                         type="button"
@@ -907,13 +899,13 @@ export function AdminDashboardView({
                           setActiveTab('users');
                           handleInspectUser(activeConversation.userId);
                         }}
-                        className="rounded-lg border border-zinc-700 hover:border-[#f5b800] px-3 py-1.5 text-xs font-semibold text-[#f5b800]"
+                        className="rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 text-xs font-bold text-[#0a58ca]"
                       >
                         Inspecter / Créditer ({activeConversation.userBalance.toFixed(2)} DT)
                       </button>
                     </div>
 
-                    <div className="flex-1 p-4 space-y-2.5 max-h-[340px] overflow-y-auto bg-[#111215]">
+                    <div className="flex-1 p-4 space-y-2.5 max-h-[340px] overflow-y-auto bg-[#f8fafc]">
                       {activeConversation.items.map((msg) => {
                         const isAdmin = msg.senderRole === 'admin';
                         return (
@@ -922,13 +914,13 @@ export function AdminDashboardView({
                             className={`flex flex-col ${isAdmin ? 'items-end' : 'items-start'}`}
                           >
                             <div
-                              className={`max-w-[82%] rounded-xl px-3.5 py-2 text-xs space-y-1 ${
+                              className={`max-w-[82%] rounded-2xl px-3.5 py-2 text-xs space-y-1 shadow-2xs ${
                                 isAdmin
-                                  ? 'bg-[#f5b800] text-[#111111] font-medium'
-                                  : 'bg-[#1f2127] border border-zinc-700 text-zinc-100'
+                                  ? 'bg-[#0a58ca] text-white font-medium'
+                                  : 'bg-white border border-slate-200 text-slate-900'
                               }`}
                             >
-                              <div className="flex items-center justify-between gap-3 text-[10px] opacity-75 font-bold">
+                              <div className="flex items-center justify-between gap-3 text-[10px] opacity-80 font-bold">
                                 <span>{isAdmin ? 'Vous (Admin)' : msg.senderName}</span>
                                 <span className="font-mono-tabular">
                                   {new Date(msg.createdAt).toLocaleTimeString([], {
@@ -946,14 +938,14 @@ export function AdminDashboardView({
 
                     <form
                       onSubmit={handleSendAdminReply}
-                      className="p-3 border-t border-zinc-800 bg-[#141519] flex items-center gap-2"
+                      className="p-3 border-t border-slate-100 bg-white flex items-center gap-2"
                     >
                       <input
                         type="text"
                         value={replyText}
                         onChange={(e) => setReplyText(e.target.value)}
                         placeholder={`Répondre à ${activeConversation.userName} en temps réel...`}
-                        className="flex-1 rounded-lg border border-zinc-700 bg-[#111215] px-3 py-2 text-xs text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
+                        className="flex-1 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:border-[#0a58ca] focus:bg-white focus:outline-none"
                       />
                       <button
                         type="submit"
@@ -963,7 +955,7 @@ export function AdminDashboardView({
                             setSelectedChatUserId(activeConversation.userId);
                           }
                         }}
-                        className="h-9 px-4 rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] disabled:bg-zinc-800 disabled:text-zinc-500 text-[#111111] font-bold text-xs inline-flex items-center gap-1.5 shrink-0"
+                        className="h-9 px-4 rounded-xl bg-[#0a58ca] hover:bg-[#0847a8] disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs inline-flex items-center gap-1.5 shrink-0"
                       >
                         <Send className="w-3.5 h-3.5" />
                         <span>Envoyer</span>
@@ -975,65 +967,62 @@ export function AdminDashboardView({
             </div>
           )}
 
-          {/* Tab 1: Users Search, List, Credit Top-Up & Gain Inspector */}
+          {/* Tab 1: Users Search & Credit Inspector */}
           {activeTab === 'users' && overview && (
             <div className="space-y-5">
-
-              {/* Search Bar */}
-              <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                 <div className="relative flex-1">
-                  <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                   <input
                     type="search"
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
-                    placeholder="Search user by username, email, or account ID..."
-                    className="w-full rounded-lg border border-zinc-700 bg-[#121214] pl-9 pr-4 py-2 text-sm text-white placeholder-zinc-500 focus:border-[#f5b800] focus:outline-none"
+                    placeholder="Rechercher un joueur par nom, e-mail ou ID..."
+                    className="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-4 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-[#0a58ca] focus:bg-white focus:outline-none"
                   />
                 </div>
-                <span className="text-xs font-mono-tabular text-zinc-400 shrink-0">
-                  Showing {filteredUsers.length} of {overview.users.length} users
+                <span className="text-xs font-mono-tabular text-slate-500 shrink-0">
+                  {filteredUsers.length} sur {overview.users.length} joueurs
                 </span>
               </div>
 
               <div className="grid xl:grid-cols-[1.2fr_1fr] gap-5 items-start">
-                {/* Users List Table */}
-                <div className="rounded-xl border border-zinc-800 bg-[#18181b] overflow-hidden">
-                  <div className="px-4 py-3 border-b border-zinc-800 bg-[#141416] flex items-center gap-2 text-sm font-bold text-white">
-                    <Users className="w-4 h-4 text-[#f5b800]" />
-                    <span>Registered Users List</span>
+                <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+                  <div className="px-4 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                    <Users className="w-4 h-4 text-[#0a58ca]" />
+                    <span>Liste des Comptes</span>
                   </div>
-                  <div className="divide-y divide-zinc-800/80 max-h-[560px] overflow-y-auto">
+                  <div className="divide-y divide-slate-100 max-h-[560px] overflow-y-auto">
                     {filteredUsers.map((u) => {
                       const isSelected = inspectedUser?.user.id === u.id;
                       return (
                         <div
                           key={u.id}
                           className={`p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs transition-colors ${
-                            isSelected ? 'bg-[#f5b800]/10' : 'hover:bg-zinc-900/60'
+                            isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
                           }`}
                         >
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono-tabular text-zinc-500">#{u.id}</span>
-                              <span className="font-bold text-white truncate">{u.username}</span>
+                              <span className="font-mono-tabular text-slate-400">#{u.id}</span>
+                              <span className="font-bold text-slate-900 truncate">{u.username}</span>
                               {u.role === 'admin' && (
-                                <span className="rounded bg-[#f5b800] px-1.5 py-0.5 text-[10px] font-bold text-[#111111]">
+                                <span className="rounded bg-[#0a58ca] px-1.5 py-0.5 text-[10px] font-bold text-white">
                                   ADMIN
                                 </span>
                               )}
                             </div>
-                            <p className="text-zinc-400 truncate mt-0.5">{u.email}</p>
+                            <p className="text-slate-500 truncate mt-0.5">{u.email}</p>
                             <div className="flex flex-wrap items-center gap-3 mt-1 font-mono-tabular">
-                              <span className="text-[#f5b800] font-bold">
-                                Balance: {u.virtualBalance.toFixed(2)} DT
+                              <span className="text-[#0a58ca] font-bold">
+                                Solde : {u.virtualBalance.toFixed(2)} DT
                               </span>
-                              <span className="text-emerald-400 font-semibold">
-                                Gain: +{u.totalGain.toFixed(2)} DT
+                              <span className="text-emerald-600 font-semibold">
+                                Gain : +{u.totalGain.toFixed(2)} DT
                               </span>
                               {u.pendingPotentialGain > 0 && (
-                                <span className="text-zinc-400">
-                                  Pending: {u.pendingPotentialGain.toFixed(2)} DT
+                                <span className="text-slate-500">
+                                  En cours : {u.pendingPotentialGain.toFixed(2)} DT
                                 </span>
                               )}
                             </div>
@@ -1042,10 +1031,10 @@ export function AdminDashboardView({
                           <button
                             type="button"
                             onClick={() => handleInspectUser(u.id)}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-zinc-700 bg-[#222226] hover:border-[#f5b800] hover:text-[#f5b800] px-3 py-2 text-xs font-semibold text-white shrink-0"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:border-[#0a58ca] hover:text-[#0a58ca] px-3 py-2 text-xs font-semibold text-slate-800 shrink-0"
                           >
                             <Eye className="w-3.5 h-3.5" />
-                            <span>Inspect & Credit</span>
+                            <span>Inspecter &amp; Créditer</span>
                           </button>
                         </div>
                       );
@@ -1053,11 +1042,10 @@ export function AdminDashboardView({
                   </div>
                 </div>
 
-                {/* User Inspector & Credit Panel */}
-                <div className="rounded-xl border border-zinc-800 bg-[#18181b] overflow-hidden">
-                  <div className="px-4 py-3 border-b border-zinc-800 bg-[#f5b800] text-[#111111] flex items-center justify-between">
-                    <span className="font-display text-sm font-extrabold">
-                      User Account & Winnings Inspector
+                <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+                  <div className="px-4 py-3.5 border-b border-slate-100 bg-[#0a58ca] text-white flex items-center justify-between">
+                    <span className="font-heading text-sm font-extrabold">
+                      Inspecteur &amp; Crédit Joueur
                     </span>
                     {inspectedUser && (
                       <span className="font-mono-tabular text-xs font-bold">
@@ -1068,65 +1056,62 @@ export function AdminDashboardView({
 
                   {inspectLoading ? (
                     <div className="p-6 space-y-3">
-                      <div className="h-24 bg-zinc-900 rounded animate-pulse" />
-                      <div className="h-32 bg-zinc-900 rounded animate-pulse" />
+                      <div className="h-24 bg-slate-100 rounded-xl animate-pulse" />
+                      <div className="h-32 bg-slate-100 rounded-xl animate-pulse" />
                     </div>
                   ) : !inspectedUser ? (
                     <div className="p-8 text-center space-y-2">
-                      <Users className="w-8 h-8 text-zinc-600 mx-auto" />
-                      <p className="text-sm font-semibold text-zinc-300">Select a User</p>
-                      <p className="text-xs text-zinc-500">
-                        Click "Inspect & Credit" on any user from the list to view their balance, tickets, total winnings (Gain), and credit DT to their account.
+                      <Users className="w-8 h-8 text-slate-300 mx-auto" />
+                      <p className="text-sm font-bold text-slate-700">Sélectionnez un joueur</p>
+                      <p className="text-xs text-slate-500">
+                        Cliquez sur &quot;Inspecter &amp; Créditer&quot; sur un joueur de la liste pour gérer son solde et voir ses tickets.
                       </p>
                     </div>
                   ) : (
                     <div className="p-4 space-y-4">
-                      {/* Profile Summary */}
-                      <div className="rounded-lg border border-zinc-800 bg-[#121214] p-3.5 flex items-center justify-between gap-2">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="font-bold text-white text-sm truncate">
+                          <p className="font-bold text-slate-900 text-sm truncate">
                             {inspectedUser.user.username}
                           </p>
-                          <p className="text-xs text-zinc-400 truncate">{inspectedUser.user.email}</p>
+                          <p className="text-xs text-slate-500 truncate">{inspectedUser.user.email}</p>
                         </div>
                         <button
                           type="button"
                           onClick={() =>
                             handleToggleRole(inspectedUser.user.id, inspectedUser.user.role)
                           }
-                          className="rounded border border-zinc-700 hover:border-[#f5b800] px-2.5 py-1 text-[11px] font-semibold text-zinc-300"
+                          className="rounded-lg border border-slate-300 bg-white hover:border-[#0a58ca] px-2.5 py-1 text-[11px] font-semibold text-slate-700"
                         >
-                          {inspectedUser.user.role === 'admin' ? 'Set User' : 'Make Admin'}
+                          {inspectedUser.user.role === 'admin' ? 'Passer Joueur' : 'Passer Admin'}
                         </button>
                       </div>
 
-                      {/* Balance & Gain Metrics */}
                       <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="rounded-lg border border-zinc-800 bg-[#121214] p-2.5">
-                          <span className="text-[11px] text-zinc-400 block">Balance</span>
-                          <span className="font-mono-tabular text-sm font-bold text-[#f5b800]">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                          <span className="text-[11px] text-slate-500 block">Solde</span>
+                          <span className="font-mono-tabular text-sm font-extrabold text-[#0a58ca]">
                             {inspectedUser.user.virtualBalance.toFixed(2)} DT
                           </span>
                         </div>
-                        <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2.5">
-                          <span className="text-[11px] text-emerald-300 block">Total Gain</span>
-                          <span className="font-mono-tabular text-sm font-bold text-emerald-400">
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-2.5">
+                          <span className="text-[11px] text-emerald-700 block">Total Gains</span>
+                          <span className="font-mono-tabular text-sm font-extrabold text-emerald-700">
                             +{inspectedUser.metrics.totalGain.toFixed(2)} DT
                           </span>
                         </div>
-                        <div className="rounded-lg border border-zinc-800 bg-[#121214] p-2.5">
-                          <span className="text-[11px] text-zinc-400 block">Pending Win</span>
-                          <span className="font-mono-tabular text-sm font-bold text-white">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                          <span className="text-[11px] text-slate-500 block">En attente</span>
+                          <span className="font-mono-tabular text-sm font-extrabold text-slate-900">
                             {inspectedUser.metrics.pendingGain.toFixed(2)} DT
                           </span>
                         </div>
                       </div>
 
-                      {/* Credit Account Form */}
-                      <div className="rounded-lg border border-[#f5b800]/40 bg-[#121214] p-3.5 space-y-3">
-                        <div className="flex items-center gap-2 text-xs font-bold text-[#f5b800]">
+                      <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3.5 space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-bold text-[#0a58ca]">
                           <Banknote className="w-4 h-4" />
-                          <span>Credit DT to User Account</span>
+                          <span>Créditer des DT au joueur</span>
                         </div>
 
                         <div className="grid grid-cols-5 gap-1.5">
@@ -1136,7 +1121,7 @@ export function AdminDashboardView({
                               type="button"
                               disabled={crediting}
                               onClick={() => handleCreditUser(inspectedUser.user.id, amt)}
-                              className="rounded border border-zinc-700 bg-zinc-900 hover:border-[#f5b800] hover:text-[#f5b800] py-1.5 text-xs font-mono-tabular font-bold text-white transition-colors"
+                              className="rounded-lg border border-slate-300 bg-white hover:border-[#0a58ca] hover:text-[#0a58ca] py-1.5 text-xs font-mono-tabular font-bold text-slate-800 transition-colors"
                             >
                               +{amt}
                             </button>
@@ -1150,59 +1135,58 @@ export function AdminDashboardView({
                             step="0.5"
                             value={creditAmount}
                             onChange={(e) => setCreditAmount(e.target.value)}
-                            placeholder="Amount DT"
-                            className="w-28 rounded-lg border border-zinc-700 bg-[#18181b] px-2.5 py-2 text-xs font-mono-tabular text-white focus:border-[#f5b800] focus:outline-none"
+                            placeholder="DT"
+                            className="w-24 rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs font-mono-tabular text-slate-900 focus:border-[#0a58ca] focus:outline-none"
                           />
                           <input
                             type="text"
                             value={creditNote}
                             onChange={(e) => setCreditNote(e.target.value)}
                             placeholder="Note"
-                            className="flex-1 rounded-lg border border-zinc-700 bg-[#18181b] px-2.5 py-2 text-xs text-white focus:border-[#f5b800] focus:outline-none"
+                            className="flex-1 rounded-xl border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-900 focus:border-[#0a58ca] focus:outline-none"
                           />
                           <button
                             type="button"
                             disabled={crediting}
                             onClick={() => handleCreditUser(inspectedUser.user.id)}
-                            className="rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3.5 py-2 text-xs shrink-0"
+                            className="rounded-xl bg-[#059669] hover:bg-[#047857] text-white font-bold px-3.5 py-2 text-xs shrink-0"
                           >
-                            {crediting ? '...' : 'Credit'}
+                            {crediting ? '...' : 'Créditer'}
                           </button>
                         </div>
                       </div>
 
-                      {/* User Tickets & Winnings */}
                       <div className="space-y-2">
-                        <h3 className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
-                          <Trophy className="w-3.5 h-3.5 text-[#f5b800]" />
-                          <span>User Tickets & Winnings ({inspectedUser.bets.length})</span>
+                        <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                          <Trophy className="w-3.5 h-3.5 text-[#0a58ca]" />
+                          <span>Tickets du joueur ({inspectedUser.bets.length})</span>
                         </h3>
-                        <div className="max-h-56 overflow-y-auto divide-y divide-zinc-800 border border-zinc-800 rounded-lg bg-[#121214]">
+                        <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 border border-slate-200 rounded-xl bg-slate-50">
                           {inspectedUser.bets.length === 0 ? (
-                            <p className="p-4 text-center text-xs text-zinc-500">
-                              No betting tickets placed by this user yet.
+                            <p className="p-4 text-center text-xs text-slate-500">
+                              Aucun ticket placé par ce joueur.
                             </p>
                           ) : (
                             inspectedUser.bets.map((b) => (
                               <div key={b.id} className="p-2.5 text-xs space-y-1">
                                 <div className="flex justify-between font-mono-tabular">
-                                  <span className="font-bold text-white">{b.reference}</span>
+                                  <span className="font-bold text-slate-900">{b.reference}</span>
                                   <span
                                     className={`font-bold uppercase ${
                                       b.status === 'won'
-                                        ? 'text-emerald-400'
+                                        ? 'text-emerald-600'
                                         : b.status === 'lost'
-                                        ? 'text-rose-400'
-                                        : 'text-[#f5b800]'
+                                        ? 'text-rose-600'
+                                        : 'text-[#0a58ca]'
                                     }`}
                                   >
                                     {b.status}
                                   </span>
                                 </div>
-                                <div className="flex justify-between text-[11px] font-mono-tabular text-zinc-400">
-                                  <span>Stake: {b.virtualStake.toFixed(2)} DT</span>
-                                  <span className="text-emerald-400 font-semibold">
-                                    Gain: {b.potentialVirtualWinnings.toFixed(2)} DT
+                                <div className="flex justify-between text-[11px] font-mono-tabular text-slate-500">
+                                  <span>Mise : {b.virtualStake.toFixed(2)} DT</span>
+                                  <span className="text-emerald-600 font-semibold">
+                                    Gain : {b.potentialVirtualWinnings.toFixed(2)} DT
                                   </span>
                                 </div>
                               </div>
@@ -1222,17 +1206,17 @@ export function AdminDashboardView({
             <div className="space-y-6">
               <form
                 onSubmit={handleCreateMatch}
-                className="rounded-xl border border-zinc-800 bg-[#18181b] p-5 space-y-4"
+                className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4 shadow-xs"
               >
-                <div className="flex items-center gap-2 text-sm font-bold text-white">
-                  <Plus className="w-4 h-4 text-[#f5b800]" />
-                  <span>Add Custom Match</span>
+                <div className="flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                  <Plus className="w-4 h-4 text-[#0a58ca]" />
+                  <span>Ajouter un Match Personnalisé</span>
                 </div>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <select
                     value={sportId}
                     onChange={(e) => setSportId(Number(e.target.value))}
-                    className="rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                    className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                   >
                     {overview.sports.map((s) => (
                       <option key={s.id} value={s.id}>
@@ -1244,7 +1228,7 @@ export function AdminDashboardView({
                   <select
                     value={competitionId}
                     onChange={(e) => setCompetitionId(Number(e.target.value))}
-                    className="rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                    className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                   >
                     {overview.competitions
                       .filter((c) => c.sportId === sportId)
@@ -1258,10 +1242,10 @@ export function AdminDashboardView({
                   <select
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value as 'upcoming' | 'live')}
-                    className="rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                    className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                   >
-                    <option value="upcoming">Upcoming</option>
-                    <option value="live">Live</option>
+                    <option value="upcoming">À venir</option>
+                    <option value="live">En direct</option>
                   </select>
 
                   <input
@@ -1269,38 +1253,38 @@ export function AdminDashboardView({
                     required
                     value={homeTeamName}
                     onChange={(e) => setHomeTeamName(e.target.value)}
-                    placeholder="Home Team"
-                    className="rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                    placeholder="Équipe Domicile"
+                    className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                   />
                   <input
                     type="text"
                     required
                     value={awayTeamName}
                     onChange={(e) => setAwayTeamName(e.target.value)}
-                    placeholder="Away Team"
-                    className="rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                    placeholder="Équipe Extérieur"
+                    className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                   />
                   <input
                     type="text"
                     value={newTimer}
                     onChange={(e) => setNewTimer(e.target.value)}
-                    placeholder="Timer / Kickoff"
-                    className="rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                    placeholder="Minute / Heure"
+                    className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                   />
                 </div>
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-4 py-2 text-xs"
+                  className="rounded-xl bg-[#0a58ca] hover:bg-[#0847a8] text-white font-bold px-4 py-2 text-xs"
                 >
-                  Create Match
+                  Créer le Match
                 </button>
               </form>
 
-              <div className="rounded-xl border border-zinc-800 bg-[#18181b] overflow-hidden">
-                <div className="px-4 py-3 border-b border-zinc-800 bg-[#141416] text-sm font-bold text-white">
-                  Matches & Score Settlement ({matches.length})
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+                <div className="px-4 py-3.5 border-b border-slate-100 bg-slate-50/70 text-sm font-extrabold text-slate-900">
+                  Matchs &amp; Règlement des Scores ({matches.length})
                 </div>
-                <div className="divide-y divide-zinc-800/80 max-h-[540px] overflow-y-auto">
+                <div className="divide-y divide-slate-100 max-h-[540px] overflow-y-auto">
                   {matches.map((m) => {
                     const edit = scoreEdits[m.id] || {
                       homeScore: m.homeScore,
@@ -1314,10 +1298,10 @@ export function AdminDashboardView({
                         className="p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs"
                       >
                         <div className="min-w-0">
-                          <p className="font-semibold text-white truncate">
+                          <p className="font-bold text-slate-900 truncate">
                             {m.homeTeam.name} vs {m.awayTeam.name}
                           </p>
-                          <p className="text-zinc-400 mt-0.5">
+                          <p className="text-slate-500 mt-0.5">
                             {m.sportName} · {m.competitionName}
                           </p>
                         </div>
@@ -1333,10 +1317,10 @@ export function AdminDashboardView({
                                 [m.id]: { ...edit, homeScore: Number(e.target.value) },
                               }))
                             }
-                            aria-label="Home score"
-                            className="w-14 rounded border border-zinc-700 bg-[#121214] px-2 py-1.5 text-center font-mono-tabular text-white"
+                            aria-label="Score domicile"
+                            className="w-14 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-center font-mono-tabular text-slate-900 font-bold"
                           />
-                          <span className="text-zinc-500">:</span>
+                          <span className="text-slate-400">:</span>
                           <input
                             type="number"
                             min={0}
@@ -1347,8 +1331,8 @@ export function AdminDashboardView({
                                 [m.id]: { ...edit, awayScore: Number(e.target.value) },
                               }))
                             }
-                            aria-label="Away score"
-                            className="w-14 rounded border border-zinc-700 bg-[#121214] px-2 py-1.5 text-center font-mono-tabular text-white"
+                            aria-label="Score extérieur"
+                            className="w-14 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-center font-mono-tabular text-slate-900 font-bold"
                           />
                           <input
                             type="text"
@@ -1359,8 +1343,8 @@ export function AdminDashboardView({
                                 [m.id]: { ...edit, matchTimer: e.target.value },
                               }))
                             }
-                            aria-label="Match timer"
-                            className="w-24 rounded border border-zinc-700 bg-[#121214] px-2 py-1.5 font-mono-tabular text-white"
+                            aria-label="Chrono du match"
+                            className="w-24 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 font-mono-tabular text-slate-900"
                           />
                           <select
                             value={edit.status}
@@ -1370,24 +1354,24 @@ export function AdminDashboardView({
                                 [m.id]: { ...edit, status: e.target.value },
                               }))
                             }
-                            className="rounded border border-zinc-700 bg-[#121214] px-2 py-1.5 text-white"
+                            className="rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 text-slate-900"
                           >
-                            <option value="upcoming">Upcoming</option>
-                            <option value="live">Live</option>
-                            <option value="finished">Finished (Settle)</option>
+                            <option value="upcoming">À venir</option>
+                            <option value="live">En direct</option>
+                            <option value="finished">Terminé (Régler)</option>
                           </select>
                           <button
                             type="button"
                             onClick={() => handleUpdateMatch(m.id)}
-                            className="rounded bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-1.5"
+                            className="rounded-lg bg-[#0a58ca] hover:bg-[#0847a8] text-white font-bold px-3 py-1.5"
                           >
-                            Save
+                            Enregistrer
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteMatch(m.id)}
-                            className="rounded border border-zinc-700 hover:border-rose-500 text-zinc-400 hover:text-rose-400 p-1.5"
-                            aria-label="Delete match"
+                            className="rounded-lg border border-slate-300 hover:border-rose-500 text-slate-400 hover:text-rose-600 p-1.5"
+                            aria-label="Supprimer le match"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1402,16 +1386,16 @@ export function AdminDashboardView({
 
           {/* Tab 3: Odds */}
           {activeTab === 'odds' && (
-            <div className="rounded-xl border border-zinc-800 bg-[#18181b] p-5 space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4 shadow-xs">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-bold text-white">
-                  <Sliders className="w-4 h-4 text-[#f5b800]" />
-                  <span>Edit Simulated Market Odds</span>
+                <div className="flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                  <Sliders className="w-4 h-4 text-[#0a58ca]" />
+                  <span>Modifier les Cotes des Marchés</span>
                 </div>
                 <select
                   value={oddsMatchId || ''}
                   onChange={(e) => setOddsMatchId(Number(e.target.value))}
-                  className="rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white max-w-sm"
+                  className="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900 max-w-sm"
                 >
                   {matches.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -1422,15 +1406,15 @@ export function AdminDashboardView({
               </div>
 
               {selectedOddsMatch && (
-                <div className="divide-y divide-zinc-800/80 border border-zinc-800 rounded-lg">
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl">
                   {selectedOddsMatch.markets.map((mkt) => (
                     <div
                       key={mkt.id}
                       className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs"
                     >
                       <div>
-                        <span className="font-semibold text-white">{mkt.selectionName}</span>
-                        <span className="text-zinc-500 ml-2">({mkt.marketType})</span>
+                        <span className="font-bold text-slate-900">{mkt.selectionName}</span>
+                        <span className="text-slate-500 ml-2">({mkt.marketType})</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <input
@@ -1444,14 +1428,14 @@ export function AdminDashboardView({
                               [mkt.id]: Number(e.target.value),
                             }))
                           }
-                          className="w-24 rounded border border-zinc-700 bg-[#121214] px-2.5 py-1.5 font-mono-tabular text-white"
+                          className="w-24 rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-1.5 font-mono-tabular text-slate-900 font-bold"
                         />
                         <button
                           type="button"
                           onClick={() => handleUpdateMarket(mkt.id)}
-                          className="rounded bg-[#f5b800] hover:bg-[#fbbf24] text-[#111111] font-bold px-3 py-1.5"
+                          className="rounded-lg bg-[#0a58ca] hover:bg-[#0847a8] text-white font-bold px-3 py-1.5"
                         >
-                          Update
+                          Appliquer
                         </button>
                       </div>
                     </div>
@@ -1466,34 +1450,36 @@ export function AdminDashboardView({
             <div className="grid md:grid-cols-2 gap-4">
               <form
                 onSubmit={handleCreateSport}
-                className="rounded-xl border border-zinc-800 bg-[#18181b] p-5 space-y-4"
+                className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4 shadow-xs"
               >
-                <h2 className="font-display text-sm font-bold text-white">Add Sport</h2>
+                <h2 className="font-heading text-sm font-extrabold text-slate-900">Ajouter un Sport</h2>
                 <input
                   type="text"
                   required
                   value={newSportName}
                   onChange={(e) => setNewSportName(e.target.value)}
-                  placeholder="Sport Name"
-                  className="w-full rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                  placeholder="Nom du sport"
+                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                 />
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#f5b800] text-[#111111] font-bold px-4 py-2 text-xs"
+                  className="rounded-xl bg-[#0a58ca] text-white font-bold px-4 py-2 text-xs"
                 >
-                  Create Sport
+                  Créer le Sport
                 </button>
               </form>
 
               <form
                 onSubmit={handleCreateCompetition}
-                className="rounded-xl border border-zinc-800 bg-[#18181b] p-5 space-y-4"
+                className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4 shadow-xs"
               >
-                <h2 className="font-display text-sm font-bold text-white">Add Competition</h2>
+                <h2 className="font-heading text-sm font-extrabold text-slate-900">
+                  Ajouter une Compétition
+                </h2>
                 <select
                   value={newCompSportId}
                   onChange={(e) => setNewCompSportId(Number(e.target.value))}
-                  className="w-full rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                 >
                   {overview.sports.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -1506,22 +1492,22 @@ export function AdminDashboardView({
                   required
                   value={newCompName}
                   onChange={(e) => setNewCompName(e.target.value)}
-                  placeholder="Competition Name"
-                  className="w-full rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                  placeholder="Nom de la compétition"
+                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                 />
                 <input
                   type="text"
                   required
                   value={newCompCountry}
                   onChange={(e) => setNewCompCountry(e.target.value)}
-                  placeholder="Country"
-                  className="w-full rounded-lg border border-zinc-700 bg-[#121214] px-3 py-2 text-xs text-white"
+                  placeholder="Pays"
+                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-900"
                 />
                 <button
                   type="submit"
-                  className="rounded-lg bg-[#f5b800] text-[#111111] font-bold px-4 py-2 text-xs"
+                  className="rounded-xl bg-[#0a58ca] text-white font-bold px-4 py-2 text-xs"
                 >
-                  Create Competition
+                  Créer la Compétition
                 </button>
               </form>
             </div>
@@ -1530,46 +1516,46 @@ export function AdminDashboardView({
           {/* Tab 5: Bets & Audit Log */}
           {activeTab === 'activity' && overview && (
             <div className="grid lg:grid-cols-2 gap-4">
-              <div className="rounded-xl border border-zinc-800 bg-[#18181b] overflow-hidden">
-                <div className="px-4 py-3 border-b border-zinc-800 bg-[#141416] flex items-center gap-2 text-sm font-bold text-white">
-                  <Activity className="w-4 h-4 text-emerald-400" />
-                  <span>Recent Platform Bets</span>
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+                <div className="px-4 py-3.5 border-b border-slate-100 bg-slate-50/70 flex items-center gap-2 text-sm font-extrabold text-slate-900">
+                  <Activity className="w-4 h-4 text-emerald-600" />
+                  <span>Derniers Paris sur la Plateforme</span>
                 </div>
-                <div className="divide-y divide-zinc-800/80 max-h-[420px] overflow-y-auto">
+                <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
                   {overview.bets.map((b) => (
                     <div key={b.id} className="p-3.5 text-xs flex items-center justify-between gap-3">
                       <div>
-                        <p className="font-semibold text-white font-mono-tabular">
+                        <p className="font-bold text-slate-900 font-mono-tabular">
                           {b.reference} · {b.username}
                         </p>
-                        <p className="text-zinc-400 mt-0.5">
-                          Stake {b.virtualStake.toFixed(2)} DT @ {b.combinedOdds}x → Gain{' '}
+                        <p className="text-slate-500 mt-0.5">
+                          Mise {b.virtualStake.toFixed(2)} DT @ {b.combinedOdds}x → Gain{' '}
                           {b.potentialVirtualWinnings.toFixed(2)} DT
                         </p>
                       </div>
-                      <span className="font-semibold uppercase text-[#f5b800]">{b.status}</span>
+                      <span className="font-bold uppercase text-[#0a58ca]">{b.status}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-zinc-800 bg-[#18181b] overflow-hidden">
-                <div className="px-4 py-3 border-b border-zinc-800 bg-[#141416] text-sm font-bold text-white">
-                  Administrative Audit Log
+              <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+                <div className="px-4 py-3.5 border-b border-slate-100 bg-slate-50/70 text-sm font-extrabold text-slate-900">
+                  Journal d&apos;Audit Administrateur
                 </div>
-                <div className="divide-y divide-zinc-800/80 max-h-[420px] overflow-y-auto">
+                <div className="divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
                   {overview.auditLogs.map((log) => (
                     <div key={log.id} className="p-3.5 text-xs space-y-1">
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold text-[#f5b800] font-mono-tabular">
+                        <span className="font-bold text-[#0a58ca] font-mono-tabular">
                           {log.action}
                         </span>
-                        <span className="text-zinc-500 font-mono-tabular">
+                        <span className="text-slate-400 font-mono-tabular">
                           {new Date(log.createdAt).toLocaleString()}
                         </span>
                       </div>
-                      <p className="text-zinc-300">{log.details}</p>
-                      <p className="text-zinc-500">By {log.adminName}</p>
+                      <p className="text-slate-700">{log.details}</p>
+                      <p className="text-slate-400">Par {log.adminName}</p>
                     </div>
                   ))}
                 </div>
@@ -1582,17 +1568,17 @@ export function AdminDashboardView({
       {/* Full-Size Screenshot Lightbox for D17 Receipts */}
       {previewScreenshot && (
         <div
-          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4"
           onClick={() => setPreviewScreenshot(null)}
         >
           <div
-            className="relative max-w-xl w-full rounded-xl bg-[#18191d] border border-zinc-700 p-2.5"
+            className="relative max-w-xl w-full rounded-2xl bg-white border border-slate-200 p-2.5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               type="button"
               onClick={() => setPreviewScreenshot(null)}
-              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-[#f5b800] text-[#111111] flex items-center justify-center shadow-lg font-bold"
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-[#0a58ca] text-white flex items-center justify-center shadow-lg font-bold"
               aria-label="Fermer l'aperçu"
             >
               <X className="w-4 h-4" />
@@ -1600,7 +1586,7 @@ export function AdminDashboardView({
             <img
               src={previewScreenshot}
               alt="Capture D17"
-              className="w-full max-h-[82vh] object-contain rounded-lg"
+              className="w-full max-h-[82vh] object-contain rounded-xl"
             />
           </div>
         </div>
